@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx react-native:*)",
+      "Bash(npm i:*)",
+      "Bash(del \"c:\\Users\\gmlfl\\Desktop\\finFlourish\\FinAndFlourish\\app\\(tabs)\\explore.tsx\")",
+      "Bash(nul)",
+      "Bash(copy \"FinAndFlourish\\.gitignore\" \".gitignore\")",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
