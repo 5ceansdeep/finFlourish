@@ -159,7 +159,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
             />
             <Gauge
               title="온도"
-              label={`${sensorData.temp}`}
+              label={`${sensorData.temp.toFixed(1)}`}
               unit="°C"
               colors={["#6BCB77", "#4CAF50"] as const}
               value={normalizeValue(sensorData.temp, 15, 30)}
@@ -178,13 +178,13 @@ export default function MainScreen({ navigation }: MainScreenProps) {
           <Text style={styles.sectionTitle}>빠른 메뉴</Text>
           <View style={styles.actionContainer}>
             <ActionButton
-              label="먹이주기"
+              label="FEED"
               imageSource={require("../FinAndFlourish/assets/images/feed.png")}
               color="#FF6B6B"
               onPress={() => feedFish()}
             />
-            <ActionButton
-              label="카메라"
+            <ActionButton 
+              label="Camera"
               imageSource={require("../FinAndFlourish/assets/images/camera.png")}
               color="#4ECDC4"
             />
@@ -256,8 +256,8 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   fishImage: {
-    width: 80,
-    height: 80,
+    width: 60,
+    height: 60,
     resizeMode: "contain",
   },
   statusTextContainer: {
@@ -271,9 +271,9 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontFamily: "PressStart2P_400Regular",
-    fontSize: 11,
+    fontSize: 13,
     color: "#1E293B",
-    lineHeight: 18,
+    lineHeight: 20,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -293,9 +293,9 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    fontFamily: "PressStart2P_400Regular",
-    fontSize: 20,
-    color: "#000000ff",
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1E293B",
     marginBottom: 16,
   },
   gaugeRow: {
@@ -353,25 +353,23 @@ const styles = StyleSheet.create({
   iconBox: {
     width: 70,
     height: 70,
-    borderWidth: 3,
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
     marginBottom: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    // backgroundColor: "#FFFFFF",
+    // shadowColor: "#000",
+    // shadowOffset: { width: 0, height: 2 },
+    // shadowOpacity: 0.1,
+    // shadowRadius: 4,
+    // elevation: 3,
   },
   actionIcon: {
-    width: 35,
-    height: 35,
+    width: 50,
+    height: 50,
     resizeMode: "contain",
   },
   actionText: {
-    fontFamily: "PressStart2P_400Regular",
     fontSize: 8,
     color: "#1E293B",
     textAlign: "center",
