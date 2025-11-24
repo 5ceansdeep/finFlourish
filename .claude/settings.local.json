@@ -7,7 +7,21 @@
       "Bash(del \"c:\\Users\\gmlfl\\Desktop\\finFlourish\\FinAndFlourish\\app\\(tabs)\\explore.tsx\")",
       "Bash(nul)",
       "Bash(copy \"FinAndFlourish\\.gitignore\" \".gitignore\")",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npx tsc:*)",
+      "Bash(cat:*)",
+      "Bash(npx expo start:*)",
+      "Bash(del /f \"c:\\Users\\gmlfl\\Desktop\\finFlourish\\nul\" 2)",
+      "Bash(del \"\\?\\c:\\Users\\gmlfl\\Desktop\\finFlourish\\nul\")",
+      "Bash(cmd /c \"del /f \\?\\c:\\Users\\gmlfl\\Desktop\\finFlourish\\nul\")",
+      "Bash(git -C \"c:\\Users\\gmlfl\\Desktop\\finFlourish\" status --short)",
+      "Bash(cmd /c \"cd /d c:\\Users\\gmlfl\\Desktop\\finFlourish && del \\.\\nul\")",
+      "Bash(cmd /c \"dir c:\\Users\\gmlfl\\Desktop\\finFlourish\\nul\")",
+      "Bash(cmd /c \"dir /a c:\\Users\\gmlfl\\Desktop\\finFlourish | findstr nul\")",
+      "Bash(git -C \"c:\\Users\\gmlfl\\Desktop\\finFlourish\" rm --cached nul)",
+      "Bash(git -C \"c:\\Users\\gmlfl\\Desktop\\finFlourish\" add -A)"
     ],
     "deny": [],
     "ask": []
