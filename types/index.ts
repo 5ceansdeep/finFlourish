@@ -1,11 +1,26 @@
 // types/index.ts
 
-import { StackNavigationProp } from '@react-navigation/stack';
+import { StackNavigationProp } from "@react-navigation/stack";
+
+/**
+ * 물고기 종류 타입 정의
+ */
+export type FishType = "betta" | "goldfish" | "guppy";
+
+/**
+ * 물고기 정보 인터페이스
+ */
+export interface Fish {
+  id: string;
+  name: string;
+  type: FishType;
+  createdAt: string;
+}
 
 /**
  * 물고기 상태 타입 정의
  */
-export type FishStatus = 'happy' | 'angry' | 'worry';
+export type FishStatus = "happy" | "angry" | "worry";
 
 /**
  * 라즈베리파이 센서 데이터 구조 정의
@@ -15,12 +30,13 @@ export interface SensorData {
   temp: number; // 섭씨 온도
   ph: number;
   status: FishStatus; // 현재 물고기 상태
+  fishType: FishType; // 현재 물고기 종류
 }
 
 /**
  * 로그 타입 정의
  */
-export type LogType = 'status' | 'feed';
+export type LogType = "status" | "feed";
 
 /**
  * 로그 기록 항목 구조 정의
@@ -40,4 +56,7 @@ export type RootStackParamList = {
   Splash: undefined;
   Main: undefined;
   Log: undefined;
+  FishName: undefined;
+  FishType: { fishName: string };
+  MyFish: undefined;
 };

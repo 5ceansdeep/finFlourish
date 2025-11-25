@@ -14,6 +14,9 @@ import { RootStackParamList } from "./types";
 import SplashScreen from "./screens/SplashScreen";
 import MainScreen from "./screens/MainScreen";
 import LogScreen from "./screens/LogScreen";
+import FishNameScreen from "./screens/FishNameScreen";
+import FishTypeScreen from "./screens/FishTypeScreen";
+import MyFishScreen from "./screens/MyFishScreen";
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -48,6 +51,9 @@ export default function App() {
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="Main" component={MainScreen} />
         <Stack.Screen name="Log" component={LogScreen} />
+        <Stack.Screen name="FishName" component={FishNameScreen} />
+        <Stack.Screen name="FishType" component={FishTypeScreen} />
+        <Stack.Screen name="MyFish" component={MyFishScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
