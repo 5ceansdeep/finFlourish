@@ -1,6 +1,6 @@
 // screens/MainScreen.tsx
 
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -10,12 +10,25 @@ import {
   ScrollView,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { StackScreenProps } from "@react-navigation/stack";
+import * as Notifications from "expo-notifications";
 
 import { useSensorData, feedFish } from "../services/sensorService";
-import { RootStackParamList } from "../types";
+import { RootStackParamList, FishStatus } from "../types";
+
+// 알림 설정
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 // 이미지 미리 import
 const fishAngry = require("../FinAndFlourish/assets/images/fish_angry.png");
@@ -76,9 +89,95 @@ export default function MainScreen({ navigation }: MainScreenProps) {
   // HTTP로 센서 데이터 가져옴 (1시간마다 갱신)
   const [sensorData, isLoading, error, refetch] = useSensorData();
 
+  // 이전 물고기 상태 저장 (상태 변화 감지용)
+  const prevStatusRef = useRef<FishStatus>(sensorData.status);
+
   // 센서 값을 게이지 비율 (0.0 ~ 1.0)로 변환
   const normalizeValue = (value: number, min: number, max: number): number => {
     return Math.min(1.0, Math.max(0.0, (value - min) / (max - min)));
+  };
+
+  // 물고기 상태 변화 감지 및 알림
+  useEffect(() => {
+    const checkStatusChange = async () => {
+      const currentStatus = sensorData.status;
+      const prevStatus = prevStatusRef.current;
+
+      // 상태가 변경되었고, 로딩 중이 아닐 때만 알림
+      if (currentStatus !== prevStatus && !isLoading) {
+        let title = "";
+        let body = "";
+
+        switch (currentStatus) {
+          case "angry":
+            title = "🚨 Goofy가 화났어요!";
+            body = "수질이 나빠졌습니다. 확인이 필요합니다.";
+            break;
+          case "worry":
+            title = "⚠️ Goofy가 걱정돼요";
+            body = "수질이 조금 불안정해요. 주의가 필요합니다.";
+            break;
+          case "happy":
+            title = "✨ Goofy가 행복해요!";
+            body = "수질이 좋아졌습니다!";
+            break;
+        }
+
+        // 로컬 알림 전송
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title,
+            body,
+            sound: true,
+          },
+          trigger: null, // 즉시 표시
+        });
+
+        // 현재 상태를 이전 상태로 업데이트
+        prevStatusRef.current = currentStatus;
+      }
+    };
+
+    checkStatusChange();
+  }, [sensorData.status, isLoading]);
+
+  // 물고기 상태 설명 함수
+  const explainFishStatus = () => {
+    const { tds, temp, ph, status } = sensorData;
+
+    let title = "";
+    let message = "";
+
+    switch (status) {
+      case "angry":
+        title = "😡 Goofy가 화났어요!";
+        message = `수질이 좋지 않아요.\n\n`;
+        if (tds > 70) message += `💧 TDS: ${tds}ppm (높음)\n`;
+        if (temp < 20 || temp > 28) message += `🌡️ 온도: ${temp.toFixed(1)}°C (부적절)\n`;
+        if (ph < 6.5 || ph > 8.0) message += `⚗️ pH: ${ph.toFixed(1)} (부적절)\n`;
+        message += `\n수질 개선이 필요합니다!`;
+        break;
+
+      case "worry":
+        title = "😟 Goofy가 걱정돼요";
+        message = `수질이 약간 불안정해요.\n\n`;
+        if (tds > 60) message += `💧 TDS: ${tds}ppm (조금 높음)\n`;
+        if (temp < 22 || temp > 27) message += `🌡️ 온도: ${temp.toFixed(1)}°C (주의)\n`;
+        if (ph < 6.8 || ph > 7.8) message += `⚗️ pH: ${ph.toFixed(1)} (주의)\n`;
+        message += `\n조금만 더 신경써주세요.`;
+        break;
+
+      case "happy":
+      default:
+        title = "😊 Goofy가 행복해요!";
+        message = `수질이 아주 좋아요!\n\n`;
+        message += `💧 TDS: ${tds}ppm ✓\n`;
+        message += `🌡️ 온도: ${temp.toFixed(1)}°C ✓\n`;
+        message += `⚗️ pH: ${ph.toFixed(1)} ✓\n`;
+        message += `\n완벽한 환경입니다!`;
+    }
+
+    Alert.alert(title, message, [{ text: "확인", style: "default" }]);
   };
 
   // 물고기 상태에 따른 이미지 및 텍스트 렌더링
@@ -106,18 +205,25 @@ export default function MainScreen({ navigation }: MainScreenProps) {
     }
 
     return (
-      <View style={[styles.statusCard, { backgroundColor: bgColor }]}>
-        {isLoading && (
-          <View style={styles.overlay}>
-            <ActivityIndicator size="large" color="#4D55FF" />
-            <Text style={styles.connectingText}>로딩 중...</Text>
+      <View>
+        <Text style={styles.sectionTitle}>오늘의 상태</Text>
+        <TouchableOpacity
+          style={[styles.statusCard, { backgroundColor: bgColor }]}
+          onPress={explainFishStatus}
+          activeOpacity={0.7}
+        >
+          {isLoading && (
+            <View style={styles.overlay}>
+              <ActivityIndicator size="large" color="#4D55FF" />
+              <Text style={styles.connectingText}>로딩 중...</Text>
+            </View>
+          )}
+          <Image source={imageSource} style={styles.fishImage} />
+          <View style={styles.statusTextContainer}>
+            <Text style={styles.statusText}>{text}</Text>
+            <Text style={styles.tapHint}>탭하여 자세히 보기</Text>
           </View>
-        )}
-        <Image source={imageSource} style={styles.fishImage} />
-        <View style={styles.statusTextContainer}>
-          <Text style={styles.statusLabel}>오늘의 상태</Text>
-          <Text style={styles.statusText}>{text}</Text>
-        </View>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -158,7 +264,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
               value={normalizeValue(sensorData.tds, 0, 100)}
             />
             <Gauge
-              title="온도"
+              title="TEMP"
               label={`${sensorData.temp.toFixed(1)}`}
               unit="°C"
               colors={["#6BCB77", "#4CAF50"] as const}
@@ -178,10 +284,18 @@ export default function MainScreen({ navigation }: MainScreenProps) {
           <Text style={styles.sectionTitle}>빠른 메뉴</Text>
           <View style={styles.actionContainer}>
             <ActionButton
-              label="FEED"
+              label="Feed"
               imageSource={require("../FinAndFlourish/assets/images/feed.png")}
               color="#FF6B6B"
-              onPress={() => feedFish()}
+              onPress={async () => {
+                const success = await feedFish();
+                if (success) {
+                  Alert.alert("성공", "먹이를 주었습니다! 🍽️");
+                  // TODO: 실제 앱에서는 로그를 서버나 로컬 스토리지에 저장
+                } else {
+                  Alert.alert("실패", "먹이 주기에 실패했습니다.");
+                }
+              }}
             />
             <ActionButton 
               label="Camera"
@@ -189,7 +303,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
               color="#4ECDC4"
             />
             <ActionButton
-              label="기록"
+              label="Log"
               imageSource={require("../FinAndFlourish/assets/images/log.png")}
               onPress={() => navigation.navigate("Log")}
               color="#45B7D1"
@@ -204,7 +318,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC"
+    backgroundColor: "#F8FAFC",
   },
   header: {
     paddingTop: 50,
@@ -264,16 +378,19 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 16,
   },
-  statusLabel: {
-    fontSize: 12,
-    color: "#64748B",
-    marginBottom: 4,
-  },
   statusText: {
     fontFamily: "PressStart2P_400Regular",
     fontSize: 13,
     color: "#1E293B",
     lineHeight: 20,
+    marginBottom: 6,
+  },
+  tapHint: {
+    fontFamily: "PixelifySans",
+    fontSize: 10,
+    color: "#64748B",
+    marginTop: 8,
+    textDecorationLine: "underline",
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -357,20 +474,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
-    // backgroundColor: "#FFFFFF",
-    // shadowColor: "#000",
-    // shadowOffset: { width: 0, height: 2 },
-    // shadowOpacity: 0.1,
-    // shadowRadius: 4,
-    // elevation: 3,
   },
   actionIcon: {
-    width: 50,
-    height: 50,
+    marginTop: 30,
+    width: 100,
+    height: 100,
     resizeMode: "contain",
   },
   actionText: {
-    fontSize: 8,
+    fontFamily: "PressStart2P_400Regular",
+    marginTop: 30,
+    fontSize: 13,
     color: "#1E293B",
     textAlign: "center",
   },

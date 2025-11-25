@@ -24,44 +24,74 @@ type LogScreenProps = StackScreenProps<RootStackParamList, "Log">;
 const LOG_DATA: LogEntry[] = [
   {
     id: "1",
-    date: "2025/01/27",
-    status: "angry",
-    message: "Bufr<이>가 화가 난 것 같습니다...",
+    date: "2025/01/27 14:30",
+    type: "feed",
+    message: "먹이 급여 완료!",
   },
   {
     id: "2",
-    date: "2025/01/27",
-    status: "worry",
-    message: "Bufr<이>가 고민중입니다.",
+    date: "2025/01/27 12:15",
+    type: "status",
+    status: "angry",
+    message: "Goofy가 화가 난 것 같습니다...",
   },
   {
     id: "3",
-    date: "2025/01/27",
-    status: "happy",
-    message: "Bufr<이>가 기분이 좋습니다!",
+    date: "2025/01/27 10:20",
+    type: "feed",
+    message: "먹이 급여 완료!",
   },
   {
     id: "4",
-    date: "2025/01/27",
+    date: "2025/01/27 09:45",
+    type: "status",
     status: "worry",
-    message: "Bufr<이>가 고민중입니다.",
+    message: "Goofy가 고민중입니다.",
   },
   {
     id: "5",
-    date: "2025/01/26",
-    status: "angry",
-    message: "온도 급변으로 인해 스트레스를 받았습니다.",
+    date: "2025/01/26 18:00",
+    type: "feed",
+    message: "먹이 급여 완료!",
   },
   {
     id: "6",
-    date: "2025/01/26",
+    date: "2025/01/26 15:30",
+    type: "status",
     status: "happy",
-    message: "센서 점검 결과 양호한 상태입니다.",
+    message: "Goofy가 기분이 좋습니다!",
+  },
+  {
+    id: "7",
+    date: "2025/01/26 12:00",
+    type: "feed",
+    message: "먹이 급여 완료!",
+  },
+  {
+    id: "8",
+    date: "2025/01/26 10:00",
+    type: "status",
+    status: "angry",
+    message: "온도 급변으로 인해 스트레스를 받았습니다.",
   },
 ];
 
 export default function LogScreen({ navigation }: LogScreenProps) {
   const renderItem = ({ item }: { item: LogEntry }) => {
+    // 먹이 주기 로그와 상태 로그 구분
+    if (item.type === "feed") {
+      return (
+        <View style={styles.logItemContainer}>
+          <Text style={styles.dateText}>{item.date}</Text>
+          <View style={[styles.logCard, styles.feedCard]}>
+            <Text style={styles.feedIcon}>🍽️</Text>
+            <Text style={styles.logText}>{item.message}</Text>
+          </View>
+        </View>
+      );
+    }
+
+    // 상태 로그
     let imgSource;
     switch (item.status) {
       case "angry":
@@ -137,6 +167,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     elevation: 2,
+  },
+  feedCard: {
+    backgroundColor: "#FFF4E5",
+  },
+  feedIcon: {
+    fontSize: 30,
+    marginRight: 15,
   },
   fishImage: { width: 40, height: 40, resizeMode: "contain", marginRight: 15 },
   logText: {

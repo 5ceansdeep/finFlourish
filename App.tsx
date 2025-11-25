@@ -1,11 +1,12 @@
 // App.tsx
 
-import React from "react";
+import React, { useEffect } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { useFonts } from "expo-font";
 import { PressStart2P_400Regular } from "@expo-google-fonts/press-start-2p";
 import { View, StyleSheet } from "react-native";
+import * as Notifications from "expo-notifications";
 
 import { RootStackParamList } from "./types";
 
@@ -20,7 +21,22 @@ export default function App() {
   // 픽셀 폰트 로드
   let [fontsLoaded] = useFonts({
     PressStart2P_400Regular,
+    PixelifySans: require("./FinAndFlourish/assets/fonts/PixelifySans-VariableFont_wght.ttf"),
+    SilkscreenRegular: require("./FinAndFlourish/assets/fonts/Silkscreen-Regular.ttf"),
+    SilkscreenBold: require("./FinAndFlourish/assets/fonts/Silkscreen-Bold.ttf"),
   });
+
+  // 알림 권한 요청
+  useEffect(() => {
+    const requestPermissions = async () => {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== "granted") {
+        console.log("알림 권한이 거부되었습니다.");
+      }
+    };
+
+    requestPermissions();
+  }, []);
 
   if (!fontsLoaded) {
     return <View style={styles.loadingContainer} />;

@@ -18,12 +18,18 @@ export interface SensorData {
 }
 
 /**
+ * 로그 타입 정의
+ */
+export type LogType = 'status' | 'feed';
+
+/**
  * 로그 기록 항목 구조 정의
  */
 export interface LogEntry {
   id: string;
   date: string;
-  status: FishStatus;
+  type: LogType; // 로그 타입 (상태 변화 or 먹이 주기)
+  status?: FishStatus; // 상태 로그일 경우
   message: string;
 }
 

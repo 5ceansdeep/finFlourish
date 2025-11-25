@@ -22,7 +22,8 @@
       "Bash(cmd /c \"dir /a c:\\Users\\gmlfl\\Desktop\\finFlourish | findstr nul\")",
       "Bash(git -C \"c:\\Users\\gmlfl\\Desktop\\finFlourish\" rm --cached nul)",
       "Bash(git -C \"c:\\Users\\gmlfl\\Desktop\\finFlourish\" add -A)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(find \"c:\\Users\\gmlfl\\Desktop\\finFlourish\" -type f ( -name \"*.ttf\" -o -name \"*.otf\" ) 2)"
     ],
     "deny": [],
     "ask": []
