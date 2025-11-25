@@ -4,9 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { SensorData, FishStatus } from '../types';
 
-// 라즈베리파이 API 주소 (실제 주소로 변경 필요)
-// 예: 'http://192.168.0.42:8000' (라즈베리파이 IP:포트)
-const API_BASE_URL = 'http://192.168.0.1:8000';
+// 라즈베리파이 API 주소
+const API_BASE_URL = 'http://172.20.10.2:8000';
 
 // 기본 센서 데이터
 const DEFAULT_SENSOR_DATA: SensorData = {
