@@ -1,6 +1,6 @@
 // screens/LogScreen.tsx
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,8 +10,10 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { StackScreenProps } from "@react-navigation/stack";
+import { useFocusEffect } from "@react-navigation/native";
 
 import { RootStackParamList, LogEntry } from "../types";
+import { getAllLogs } from "../services/logService";
 
 // 이미지 미리 import
 const fishAngry = require("../FinAndFlourish/assets/images/fish_angry.png");
@@ -77,12 +79,69 @@ const LOG_DATA: LogEntry[] = [
 ];
 
 export default function LogScreen({ navigation }: LogScreenProps) {
+  const [logs, setLogs] = useState<LogEntry[]>(LOG_DATA);
+
+  // 화면 포커스될 때마다 로그 새로고침
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadLogs = async () => {
+        const savedLogs = await getAllLogs();
+        if (savedLogs.length > 0) {
+          setLogs(savedLogs);
+        }
+      };
+      loadLogs();
+    }, [])
+  );
+
   const renderItem = ({ item }: { item: LogEntry }) => {
-    // 먹이 주기 로그와 상태 로그 구분
+    // 자동급여 로그
+    if (item.type === "auto_feed") {
+      const executed = item.autoFeedData?.executed ?? false;
+      return (
+        <View style={styles.logItemContainer}>
+          <View style={styles.logHeader}>
+            <Text style={styles.dateText}>{item.date}</Text>
+            <View style={[
+              styles.logTypeBadge,
+              executed ? styles.badgeAutoSuccess : styles.badgeAutoSkipped
+            ]}>
+              <Text style={styles.badgeText}>
+                {executed ? "자동 급여" : "급여 중단"}
+              </Text>
+            </View>
+          </View>
+          <View style={[
+            styles.logCard,
+            styles.autoFeedCard,
+            executed ? styles.autoFeedSuccess : styles.autoFeedSkipped
+          ]}>
+            <Text style={styles.autoFeedIcon}>
+              {executed ? "🤖✅" : "🤖❌"}
+            </Text>
+            <View style={styles.autoFeedTextContainer}>
+              <Text style={styles.logText}>{item.message}</Text>
+              {item.autoFeedData && (
+                <Text style={styles.autoFeedMode}>
+                  모드: {item.autoFeedData.mode}
+                </Text>
+              )}
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // 먹이 주기 로그 (수동)
     if (item.type === "feed") {
       return (
         <View style={styles.logItemContainer}>
-          <Text style={styles.dateText}>{item.date}</Text>
+          <View style={styles.logHeader}>
+            <Text style={styles.dateText}>{item.date}</Text>
+            <View style={styles.logTypeBadge}>
+              <Text style={styles.badgeText}>수동 급여</Text>
+            </View>
+          </View>
           <View style={[styles.logCard, styles.feedCard]}>
             <Text style={styles.feedIcon}>🍽️</Text>
             <Text style={styles.logText}>{item.message}</Text>
@@ -93,21 +152,35 @@ export default function LogScreen({ navigation }: LogScreenProps) {
 
     // 상태 로그
     let imgSource;
+    let statusBadgeStyle;
+    let statusBadgeText;
+
     switch (item.status) {
       case "angry":
         imgSource = fishAngry;
+        statusBadgeStyle = styles.badgeAngry;
+        statusBadgeText = "화남";
         break;
       case "worry":
         imgSource = fishWorry;
+        statusBadgeStyle = styles.badgeWorry;
+        statusBadgeText = "걱정";
         break;
       case "happy":
       default:
         imgSource = fishHappy;
+        statusBadgeStyle = styles.badgeHappy;
+        statusBadgeText = "행복";
     }
 
     return (
       <View style={styles.logItemContainer}>
-        <Text style={styles.dateText}>{item.date}</Text>
+        <View style={styles.logHeader}>
+          <Text style={styles.dateText}>{item.date}</Text>
+          <View style={[styles.logTypeBadge, statusBadgeStyle]}>
+            <Text style={styles.badgeText}>{statusBadgeText}</Text>
+          </View>
+        </View>
         <View style={styles.logCard}>
           <Image source={imgSource} style={styles.fishImage} />
           <Text style={styles.logText}>{item.message}</Text>
@@ -127,7 +200,7 @@ export default function LogScreen({ navigation }: LogScreenProps) {
       </View>
 
       <FlatList
-        data={LOG_DATA}
+        data={logs}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
@@ -154,11 +227,42 @@ const styles = StyleSheet.create({
   },
   listContent: { padding: 20 },
   logItemContainer: { marginBottom: 20 },
+  logHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
   dateText: {
     fontFamily: "PressStart2P_400Regular",
     fontSize: 10,
     color: "#888",
-    marginBottom: 5,
+  },
+  logTypeBadge: {
+    backgroundColor: "#E0E7FF",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  badgeText: {
+    fontFamily: "PressStart2P_400Regular",
+    fontSize: 8,
+    color: "#4338CA",
+  },
+  badgeAutoSuccess: {
+    backgroundColor: "#D1FAE5",
+  },
+  badgeAutoSkipped: {
+    backgroundColor: "#FEF3C7",
+  },
+  badgeHappy: {
+    backgroundColor: "#DBEAFE",
+  },
+  badgeWorry: {
+    backgroundColor: "#FEF3C7",
+  },
+  badgeAngry: {
+    backgroundColor: "#FEE2E2",
   },
   logCard: {
     backgroundColor: "#EAF8FC",
@@ -174,6 +278,30 @@ const styles = StyleSheet.create({
   feedIcon: {
     fontSize: 30,
     marginRight: 15,
+  },
+  autoFeedCard: {
+    backgroundColor: "#F0F9FF",
+  },
+  autoFeedSuccess: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#10B981",
+  },
+  autoFeedSkipped: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#F59E0B",
+  },
+  autoFeedIcon: {
+    fontSize: 28,
+    marginRight: 15,
+  },
+  autoFeedTextContainer: {
+    flex: 1,
+  },
+  autoFeedMode: {
+    fontFamily: "PressStart2P_400Regular",
+    fontSize: 8,
+    color: "#64748B",
+    marginTop: 6,
   },
   fishImage: { width: 40, height: 40, resizeMode: "contain", marginRight: 15 },
   logText: {

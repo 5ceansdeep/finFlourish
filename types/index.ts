@@ -36,7 +36,7 @@ export interface SensorData {
 /**
  * 로그 타입 정의
  */
-export type LogType = "status" | "feed";
+export type LogType = "status" | "feed" | "auto_feed";
 
 /**
  * 로그 기록 항목 구조 정의
@@ -44,9 +44,15 @@ export type LogType = "status" | "feed";
 export interface LogEntry {
   id: string;
   date: string;
-  type: LogType; // 로그 타입 (상태 변화 or 먹이 주기)
+  type: LogType; // 로그 타입 (상태 변화 or 먹이 주기 or 자동급여)
   status?: FishStatus; // 상태 로그일 경우
   message: string;
+  autoFeedData?: {
+    // 자동급여 로그일 경우
+    executed: boolean; // true: 급여 실행, false: 급여 중단
+    mode: "NORMAL" | "REDUCED" | "HOLD";
+    reason: string;
+  };
 }
 
 /**

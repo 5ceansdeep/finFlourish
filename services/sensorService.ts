@@ -105,7 +105,7 @@ export function useSensorData(): [
 }
 
 /**
- * 먹이 주기 명령 전송
+ * 먹이 주기 명령 전송 (수동)
  */
 export async function feedFish(): Promise<boolean> {
   try {
@@ -123,4 +123,19 @@ export async function feedFish(): Promise<boolean> {
     console.error("먹이 주기 실패:", err);
     return false;
   }
+}
+
+/**
+ * 자동 먹이 주기 실행
+ * @param shouldExecute - true: 실제 급여, false: 급여 중단 (기록만)
+ */
+export async function executeAutoFeed(shouldExecute: boolean): Promise<boolean> {
+  if (!shouldExecute) {
+    // 급여 중단 시에는 API 호출 없이 기록만
+    console.log("자동급여 중단 (센서값 비정상)");
+    return true;
+  }
+
+  // 실제 급여 실행
+  return await feedFish();
 }

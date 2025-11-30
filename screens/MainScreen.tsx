@@ -10,15 +10,32 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Switch,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { StackScreenProps } from "@react-navigation/stack";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Notifications from "expo-notifications";
 
-import { useSensorData, feedFish } from "../services/sensorService";
+import { useSensorData, feedFish, executeAutoFeed } from "../services/sensorService";
 import { RootStackParamList, FishStatus, Fish, FishType } from "../types";
 import { getCurrentFish } from "../services/fishStorage";
+import {
+  autoFeedingController,
+} from "../services/autoFeedingService";
+import {
+  getLastAutoFeedTime,
+  setLastAutoFeedTime,
+  getMinutesUntilNextFeed,
+  shouldFeedNow,
+  isAutoFeedEnabled,
+  setAutoFeedEnabled,
+  formatTimeAgo,
+  formatTimeUntil,
+  getRecommendedInterval,
+  setFeedIntervalHours,
+} from "../services/autoFeedingScheduler";
+import { addLog } from "../services/logService";
 
 // 알림 설정
 Notifications.setNotificationHandler({
@@ -38,65 +55,6 @@ const fishHappy = require("../FinAndFlourish/assets/images/fish_happy.png");
 const logoImage = require("../FinAndFlourish/assets/images/logo.png");
 
 type MainScreenProps = StackScreenProps<RootStackParamList, "Main">;
-
-// 물고기 종류와 상태에 따른 먹이 가이드
-const getFeedingGuide = (fishType: FishType, status: FishStatus) => {
-  const guides: Record<FishType, Record<FishStatus, { frequency: string; amount: string; notice: string }>> = {
-    betta: {
-      happy: {
-        frequency: "하루 2회",
-        amount: "소량 (2-3알)",
-        notice: "최적 상태입니다!"
-      },
-      worry: {
-        frequency: "하루 1회",
-        amount: "소량 (2알)",
-        notice: "수질 관리 필요"
-      },
-      angry: {
-        frequency: "하루 1회",
-        amount: "최소량 (1-2알)",
-        notice: "수질 개선 후 급여"
-      }
-    },
-    goldfish: {
-      happy: {
-        frequency: "하루 2-3회",
-        amount: "중량 (5-6알)",
-        notice: "활발한 급여 가능"
-      },
-      worry: {
-        frequency: "하루 2회",
-        amount: "소량 (3-4알)",
-        notice: "과식 주의"
-      },
-      angry: {
-        frequency: "하루 1회",
-        amount: "최소량 (2알)",
-        notice: "환경 개선 우선"
-      }
-    },
-    guppy: {
-      happy: {
-        frequency: "하루 3회",
-        amount: "소량 (3-4알)",
-        notice: "자주 소량 급여"
-      },
-      worry: {
-        frequency: "하루 2회",
-        amount: "소량 (2-3알)",
-        notice: "수질 점검 필요"
-      },
-      angry: {
-        frequency: "하루 1회",
-        amount: "최소량 (1-2알)",
-        notice: "급여 제한 필요"
-      }
-    }
-  };
-
-  return guides[fishType][status];
-};
 
 interface GaugeProps {
   label: string;
@@ -148,10 +106,17 @@ export default function MainScreen({ navigation }: MainScreenProps) {
   const [currentFish, setCurrentFish] = useState<Fish | null>(null);
   const prevStatusRef = useRef<FishStatus>(sensorData.status);
 
+  // 자동급여 상태
+  const [lastFeedTime, setLastFeedTimeState] = useState<Date | null>(null);
+  const [minutesUntilNext, setMinutesUntilNext] = useState<number | null>(null);
+  const [autoFeedOn, setAutoFeedOn] = useState<boolean>(false);
+
   // 현재 물고기 정보 (등록된 물고기가 있으면 해당 정보, 없으면 기본값)
   const fishType: FishType = currentFish?.type || sensorData.fishType;
   const fishName: string = currentFish?.name || "물고기";
-  const feedingGuide = getFeedingGuide(fishType, sensorData.status);
+
+  // 자동급여 로직 결과
+  const autoFeeding = autoFeedingController(fishType, sensorData);
 
   // 현재 선택된 물고기 정보 로드
   const loadCurrentFish = async () => {
@@ -166,8 +131,96 @@ export default function MainScreen({ navigation }: MainScreenProps) {
     }, [])
   );
 
+  // 자동급여 상태 로드 및 업데이트
+  useEffect(() => {
+    const loadAutoFeedStatus = async () => {
+      const enabled = await isAutoFeedEnabled();
+      const lastTime = await getLastAutoFeedTime();
+      const minutes = await getMinutesUntilNextFeed();
+
+      setAutoFeedOn(enabled);
+      setLastFeedTimeState(lastTime);
+      setMinutesUntilNext(minutes);
+    };
+
+    loadAutoFeedStatus();
+    // 1분마다 다음 급여 시간 업데이트
+    const interval = setInterval(loadAutoFeedStatus, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 자동급여 실행 로직
+  useEffect(() => {
+    const checkAndExecuteAutoFeed = async () => {
+      if (isLoading || !autoFeedOn) return;
+
+      const shouldFeed = await shouldFeedNow();
+      if (!shouldFeed) return;
+
+      const mode = autoFeeding.mode;
+      const shouldExecute = mode === "NORMAL";
+
+      // 급여 실행 또는 중단 기록
+      const success = await executeAutoFeed(shouldExecute);
+
+      if (success) {
+        // 로그 추가
+        await addLog({
+          date: new Date().toLocaleString("ko-KR"),
+          type: "auto_feed",
+          message: shouldExecute
+            ? `🤖 자동급여 실행 (${mode})`
+            : `🤖 자동급여 중단 - ${autoFeeding.recommendation}`,
+          autoFeedData: {
+            executed: shouldExecute,
+            mode,
+            reason: autoFeeding.recommendation,
+          },
+        });
+
+        // 마지막 급여 시간 업데이트
+        const now = new Date();
+        await setLastAutoFeedTime(now);
+        setLastFeedTimeState(now);
+
+        // 다음 급여 간격 설정
+        const recommendedInterval = getRecommendedInterval(fishType, mode);
+        await setFeedIntervalHours(recommendedInterval);
+
+        // 알림 전송
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: shouldExecute ? "🤖 자동급여 완료" : "🤖 자동급여 중단",
+            body: shouldExecute
+              ? `${fishName}에게 먹이를 주었습니다.`
+              : `수질이 좋지 않아 급여를 중단했습니다.`,
+            sound: true,
+          },
+          trigger: null,
+        });
+      }
+    };
+
+    checkAndExecuteAutoFeed();
+  }, [sensorData, isLoading, autoFeedOn, autoFeeding, fishType, fishName]);
+
   const normalizeValue = (value: number, min: number, max: number): number => {
     return Math.min(1.0, Math.max(0.0, (value - min) / (max - min)));
+  };
+
+  // 자동급여 ON/OFF 토글
+  const toggleAutoFeed = async () => {
+    const newState = !autoFeedOn;
+    await setAutoFeedEnabled(newState);
+    setAutoFeedOn(newState);
+
+    Alert.alert(
+      "자동급여 설정",
+      newState
+        ? "자동급여가 활성화되었습니다. 센서 데이터를 기반으로 자동으로 먹이를 급여합니다."
+        : "자동급여가 비활성화되었습니다.",
+      [{ text: "확인" }]
+    );
   };
 
   // 물고기 상태 변화 감지 및 알림
@@ -178,29 +231,43 @@ export default function MainScreen({ navigation }: MainScreenProps) {
       const currentStatus = sensorData.status;
       const prevStatus = prevStatusRef.current;
 
-      if (currentStatus !== prevStatus) {
+      if (currentStatus !== prevStatus && prevStatus !== undefined) {
         let title = "";
         let body = "";
+        let logMessage = "";
 
         switch (currentStatus) {
           case "angry":
             title = `🚨 ${fishName}(이)가 화가 났습니다!`;
             body = "수질이 나빠졌습니다. 확인이 필요합니다.";
+            logMessage = `${fishName}(이)가 화가 났습니다 😡`;
             break;
           case "worry":
             title = `⚠️ ${fishName}(이)가 걱정하고 있습니다`;
             body = "수질이 조금 불안정해요. 주의가 필요합니다.";
+            logMessage = `${fishName}(이)가 걱정하고 있습니다 😟`;
             break;
           case "happy":
             title = `✨ ${fishName}(이)가 행복합니다!`;
             body = "수질이 좋아졌습니다!";
+            logMessage = `${fishName}(이)가 행복합니다 😊`;
             break;
         }
 
+        // 알림 전송
         await Notifications.scheduleNotificationAsync({
           content: { title, body, sound: true },
           trigger: null,
         });
+
+        // 상태 변화 로그 기록
+        await addLog({
+          date: new Date().toLocaleString("ko-KR"),
+          type: "status",
+          status: currentStatus,
+          message: logMessage,
+        });
+
         prevStatusRef.current = currentStatus;
       }
     };
@@ -271,7 +338,6 @@ export default function MainScreen({ navigation }: MainScreenProps) {
           {isLoading && (
             <View style={styles.overlay}>
               <ActivityIndicator size="large" color="#4D55FF" />
-              <Text style={styles.connectingText}>로딩 중...</Text>
             </View>
           )}
           <Image source={imageSource} style={styles.fishImage} />
@@ -286,10 +352,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={["#4D55FF", "#7B83FF"]}
-        style={styles.header}
-      >
+      <LinearGradient colors={["#4D55FF", "#7B83FF"]} style={styles.header}>
         <Image source={logoImage} style={styles.logo} />
         <Text style={styles.headerTitle}>FIN & FLOURISH</Text>
         <TouchableOpacity
@@ -339,26 +402,73 @@ export default function MainScreen({ navigation }: MainScreenProps) {
           </View>
         </View>
 
-        <View style={styles.feedingSection}>
-          <Text style={styles.sectionTitle}>오늘의 먹이 가이드</Text>
-          <View style={styles.feedingCard}>
-            <View style={styles.feedingRow}>
-              <Text style={styles.feedingLabel}>빈도</Text>
-              <Text style={styles.feedingValue}>
-                {feedingGuide.frequency}
+        <View style={styles.autoFeedingSection}>
+          <Text style={styles.sectionTitle}>자동급여 시스템</Text>
+
+          {/* 논문 기반 급여 피드백 */}
+          <View
+            style={[
+              styles.feedbackCard,
+              autoFeeding.mode === "NORMAL" && styles.feedbackNormal,
+              autoFeeding.mode === "REDUCED" && styles.feedbackReduced,
+              autoFeeding.mode === "HOLD" && styles.feedbackHold,
+            ]}
+          >
+            <View style={styles.feedbackHeader}>
+              <Text style={styles.feedbackTitle}>
+                {autoFeeding.mode === "NORMAL" && "✅ 정상 급여 가능"}
+                {autoFeeding.mode === "REDUCED" && "⚠️ 급여량 감량 필요"}
+                {autoFeeding.mode === "HOLD" && "🚨 급여 중단 권장"}
               </Text>
             </View>
-            <View style={styles.feedingRow}>
-              <Text style={styles.feedingLabel}>양</Text>
-              <Text style={styles.feedingValue}>
-                {feedingGuide.amount}
+            <Text style={styles.feedbackText}>
+              {autoFeeding.recommendation}
+            </Text>
+            <View style={styles.feedbackDetails}>
+              <Text style={styles.feedbackDetailLabel}>어종:</Text>
+              <Text style={styles.feedbackDetailValue}>
+                {fishType === "betta"
+                  ? "베타"
+                  : fishType === "goldfish"
+                  ? "금붕어"
+                  : "구피"}
               </Text>
             </View>
-            <View style={styles.feedingRow}>
-              <Text style={styles.feedingLabel}>주의</Text>
-              <Text style={styles.feedingValue} numberOfLines={2} ellipsizeMode="tail">
-                {feedingGuide.notice}
+            <View style={styles.feedbackDetails}>
+              <Text style={styles.feedbackDetailLabel}>현재 수질:</Text>
+              <Text style={styles.feedbackDetailValue}>
+                T: {sensorData.temp.toFixed(1)}°C, pH:{" "}
+                {sensorData.ph.toFixed(1)}, TDS: {sensorData.tds}ppm
               </Text>
+            </View>
+          </View>
+
+          {/* 자동급여 타이머 정보 */}
+          <View style={styles.timerCard}>
+            <View style={styles.timerRow}>
+              <Text style={styles.timerLabel}>🕐 마지막 급여</Text>
+              <Text style={styles.timerValue}>
+                {lastFeedTime ? formatTimeAgo(lastFeedTime) : "기록 없음"}
+              </Text>
+            </View>
+            <View style={styles.timerRow}>
+              <Text style={styles.timerLabel}>⏰ 다음 급여</Text>
+              <Text style={styles.timerValue}>
+                {minutesUntilNext !== null && minutesUntilNext > 0
+                  ? formatTimeUntil(minutesUntilNext)
+                  : minutesUntilNext === null
+                  ? "미설정"
+                  : "지금"}
+              </Text>
+            </View>
+            <View style={styles.timerRow}>
+              <Text style={styles.timerLabel}>🤖 자동급여</Text>
+              <Switch
+                value={autoFeedOn}
+                onValueChange={toggleAutoFeed}
+                trackColor={{ false: "#CBD5E1", true: "#10B981" }}
+                thumbColor={autoFeedOn ? "#FFFFFF" : "#F1F5F9"}
+              />
             </View>
           </View>
         </View>
@@ -373,6 +483,12 @@ export default function MainScreen({ navigation }: MainScreenProps) {
               onPress={async () => {
                 const success = await feedFish();
                 if (success) {
+                  // 수동 먹이급여 로그 기록
+                  await addLog({
+                    date: new Date().toLocaleString("ko-KR"),
+                    type: "feed",
+                    message: `${fishName}에게 먹이를 주었습니다 🍽️`,
+                  });
                   Alert.alert("성공", "먹이를 주었습니다! 🍽️");
                 } else {
                   Alert.alert("실패", "먹이 주기에 실패했습니다.");
@@ -380,13 +496,13 @@ export default function MainScreen({ navigation }: MainScreenProps) {
               }}
             />
             <ActionButton
-              label="기록"
+              label="feeding Log"
               imageSource={require("../FinAndFlourish/assets/images/log.png")}
               onPress={() => navigation.navigate("Log")}
               color="#45B7D1"
             />
             <ActionButton
-              label="내 물고기들"
+              label="My fishes"
               imageSource={require("../FinAndFlourish/assets/images/fish_happy.png")}
               onPress={() => navigation.navigate("MyFish")}
               color="#9B59B6"
@@ -546,7 +662,7 @@ const styles = StyleSheet.create({
     borderRadius: 25,
   },
   gaugeValue: {
-    fontFamily: "PixelifySans",
+    fontFamily: "SilkscreenRegular",
     fontSize: 14,
     color: "#1E293B",
     marginTop: 10,
@@ -582,6 +698,165 @@ const styles = StyleSheet.create({
     color: "#1E293B",
     textAlign: "right",
     flex: 1,
+  },
+  autoFeedingSection: {
+    marginBottom: 24,
+  },
+  feedbackCard: {
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  feedbackNormal: {
+    backgroundColor: "#E5F8FF",
+  },
+  feedbackReduced: {
+    backgroundColor: "#FFF8E5",
+  },
+  feedbackHold: {
+    backgroundColor: "#FFE5E5",
+  },
+  feedbackHeader: {
+    marginBottom: 12,
+  },
+  feedbackTitle: {
+    fontFamily: "PixelifySans",
+    fontSize: 15,
+    color: "#1E293B",
+  },
+  feedbackText: {
+    fontFamily: "PixelifySans",
+    fontSize: 13,
+    color: "#334155",
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  feedbackDetails: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  feedbackDetailLabel: {
+    fontFamily: "SilkscreenBold",
+    fontSize: 11,
+    color: "#64748B",
+    marginRight: 8,
+  },
+  feedbackDetailValue: {
+    fontFamily: "PixelifySans",
+    fontSize: 11,
+    color: "#475569",
+    flex: 1,
+  },
+  timerCard: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+  },
+  timerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  timerLabel: {
+    fontFamily: "SilkscreenBold",
+    fontSize: 13,
+    color: "#475569",
+  },
+  timerValue: {
+    fontFamily: "PixelifySans",
+    fontSize: 14,
+    color: "#1E293B",
+  },
+  statusOn: {
+    color: "#10B981",
+    fontFamily: "SilkscreenBold",
+  },
+  statusOff: {
+    color: "#94A3B8",
+    fontFamily: "SilkscreenBold",
+  },
+  modeCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  modeNormal: {
+    backgroundColor: "#E5F8FF",
+    borderLeftWidth: 4,
+    borderLeftColor: "#4D96FF",
+  },
+  modeReduced: {
+    backgroundColor: "#FFF8E5",
+    borderLeftWidth: 4,
+    borderLeftColor: "#FFB800",
+  },
+  modeHold: {
+    backgroundColor: "#FFE5E5",
+    borderLeftWidth: 4,
+    borderLeftColor: "#FF6B6B",
+  },
+  modeTitle: {
+    fontFamily: "SilkscreenBold",
+    fontSize: 16,
+    color: "#1E293B",
+    marginBottom: 8,
+  },
+  modeRecommendation: {
+    fontFamily: "PixelifySans",
+    fontSize: 13,
+    color: "#334155",
+    lineHeight: 20,
+  },
+  strategyCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  strategyTitle: {
+    fontFamily: "SilkscreenBold",
+    fontSize: 15,
+    color: "#1E293B",
+    marginBottom: 12,
+  },
+  strategyItem: {
+    fontFamily: "PixelifySans",
+    fontSize: 13,
+    color: "#475569",
+    lineHeight: 22,
+    marginBottom: 6,
+  },
+  warningBox: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: "#F59E0B",
+  },
+  warningText: {
+    fontFamily: "PixelifySans",
+    fontSize: 12,
+    color: "#92400E",
+    lineHeight: 18,
   },
   actionSection: {
     marginBottom: 20,
