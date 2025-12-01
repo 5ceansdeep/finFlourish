@@ -1,7 +1,5 @@
 // types/index.ts
 
-import { StackNavigationProp } from "@react-navigation/stack";
-
 /**
  * 물고기 종류 타입 정의
  */
@@ -27,27 +25,21 @@ export interface Fish {
 }
 
 /**
- * 물고기 상태 타입 정의
+ * 물고기 상태 타입 정의 (로그 기록용)
  */
 export type FishStatus = "happy" | "angry" | "worry";
 
 /**
- * 라즈베리파이 센서 데이터 구조 정의 (sensorService.ts에서 사용)
+ * 센서 데이터 구조 정의
  */
-export interface ExtendedSensorData {
+export interface SensorData {
   tds: number;
   temp: number; // 섭씨 온도
   ph: number;
   fishType: FishType; // 현재 물고기 종류
-}
-
-/**
- * 로그용 센서 데이터
- */
-export interface LogSensorData {
-  tds: number;
-  temp: number;
-  ph: number;
+  do?: number; // 용존산소 (mg/L) - 선택
+  tan?: number; // 총 암모니아질소 (mg/L as N) - 선택
+  nh3?: number; // 유리 암모니아 (mg/L as NH3) - 선택
 }
 
 /**
@@ -61,13 +53,18 @@ export type LogType = "status" | "feed" | "auto_feed" | "stress";
 export interface LogEntry {
   id: string;
   date: string;
-  type: LogType; // 로그 타입 (상태 변화 or 먹이 주기 or 자동급여)
-  status?: FishStatus; // 상태 로그일 경우
+  type: LogType;
+  status?: FishStatus; // 상태/스트레스 로그일 경우
   message: string;
-  sensorData?: LogSensorData; // 상태 로그에 포함된 센서 데이터
+  sensorData?: {
+    // 상태 로그에 포함된 센서 데이터
+    temp: number;
+    ph: number;
+    tds: number;
+  };
   autoFeedData?: {
     // 자동급여 로그일 경우
-    executed: boolean; // true: 급여 실행, false: 급여 중단
+    executed: boolean;
     mode: "NORMAL" | "REDUCED" | "HOLD";
     reason: string;
   };

@@ -1,20 +1,10 @@
 // services/autoFeedingService.ts
 // 논문 기반 자동급여 로직 - 생물량, DO, 암모니아 고려
 
-import { FishType, LifeStage } from "../types";
+import { FishType, LifeStage, SensorData } from "../types";
 
 // 급여 모드 타입
 export type FeedingMode = "NORMAL" | "REDUCED" | "HOLD";
-
-// 확장된 센서 데이터 타입
-export interface ExtendedSensorData {
-  temp: number;
-  ph: number;
-  tds: number;
-  do?: number; // 용존산소 (mg/L)
-  tan?: number; // 총 암모니아질소 (mg/L as N)
-  nh3?: number; // 유리 암모니아 (mg/L as NH3)
-}
 
 // 급여 입력 파라미터
 export interface FeedingInput {
@@ -23,7 +13,7 @@ export interface FeedingInput {
   n_fish: number; // 개체수
   w_mean: number; // 개체당 평균 체중(g)
   v_tank: number; // 수조 용량(L)
-  sensorData: ExtendedSensorData;
+  sensorData: SensorData;
   stressEvent?: boolean; // 스트레스 이벤트 (이동, 질병, 대규모 환수 등)
   isNightTime?: boolean; // 야간 여부
 }
@@ -308,7 +298,7 @@ export function computeDailyFeed(input: FeedingInput): FeedingDecision {
 function generateRecommendation(
   mode: FeedingMode,
   species: FishType,
-  sensorData: ExtendedSensorData
+  sensorData: SensorData
 ): string {
   if (mode === "NORMAL") {
     return "✅ 최적 환경입니다. 정상 급여하세요.";
@@ -375,7 +365,7 @@ function generateDetails(
 // === 14. 간단한 컨트롤러 함수 (기존 호환성 유지) ===
 export function autoFeedingController(
   fishType: FishType,
-  sensorData: ExtendedSensorData
+  sensorData: SensorData
 ): { mode: FeedingMode; recommendation: string } {
   // 기본값으로 간단하게 계산 (생물량 정보 없을 때)
   const input: FeedingInput = {

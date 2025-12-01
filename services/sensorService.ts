@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
-import { FishType, ExtendedSensorData } from "../types";
+import { FishType, SensorData } from "../types";
 
 // 라즈베리파이 API 주소
 const API_BASE_URL = "http://172.20.10.2:8000";
@@ -11,7 +11,7 @@ const API_BASE_URL = "http://172.20.10.2:8000";
 const CURRENT_FISH_TYPE: FishType = "betta";
 
 // 기본 센서 데이터
-const DEFAULT_SENSOR_DATA: ExtendedSensorData = {
+const DEFAULT_SENSOR_DATA: SensorData = {
   tds: 50,
   temp: 25,
   ph: 7.0,
@@ -19,20 +19,19 @@ const DEFAULT_SENSOR_DATA: ExtendedSensorData = {
 };
 
 // 1분 (밀리초)
-const ONE_M = 60 * 1000;
+const ONE_MINUTE = 60 * 1000;
 
 /**
  * 센서 데이터를 HTTP로 가져오는 훅
  * @returns [sensorData, isLoading, error, refetch]
  */
 export function useSensorData(): [
-  ExtendedSensorData,
+  SensorData,
   boolean,
   string | null,
   () => void
 ] {
-  const [sensorData, setSensorData] =
-    useState<ExtendedSensorData>(DEFAULT_SENSOR_DATA);
+  const [sensorData, setSensorData] = useState<SensorData>(DEFAULT_SENSOR_DATA);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,8 +84,8 @@ export function useSensorData(): [
     // 초기 데이터 로드
     fetchSensorData();
 
-    // 1시간마다 데이터 업데이트
-    const interval = setInterval(fetchSensorData, ONE_M);
+    // 1분마다 데이터 업데이트
+    const interval = setInterval(fetchSensorData, ONE_MINUTE);
 
     return () => clearInterval(interval);
   }, [fetchSensorData]);
