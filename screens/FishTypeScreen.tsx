@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import { StackScreenProps } from "@react-navigation/stack";
 import { RootStackParamList, FishType } from "../types";
-import { addFish } from "../services/fishStorage";
 
 type FishTypeScreenProps = StackScreenProps<RootStackParamList, "FishType">;
 
@@ -47,25 +46,13 @@ export default function FishTypeScreen({ navigation, route }: FishTypeScreenProp
   const { fishName } = route.params;
   const [selectedType, setSelectedType] = useState<FishType | null>(null);
 
-  const handleConfirm = async () => {
+  const handleConfirm = () => {
     if (selectedType) {
-      try {
-        // AsyncStorage에 물고기 정보 저장
-        await addFish(fishName, selectedType);
-
-        Alert.alert(
-          "완료!",
-          `${fishName}(${FISH_OPTIONS.find(f => f.type === selectedType)?.name})가 추가되었습니다!`,
-          [
-            {
-              text: "확인",
-              onPress: () => navigation.navigate("Main"),
-            },
-          ]
-        );
-      } catch (error) {
-        Alert.alert("오류", "물고기 추가에 실패했습니다.");
-      }
+      // 상세 정보 입력 화면으로 이동
+      navigation.navigate("FishDetail", {
+        fishName,
+        fishType: selectedType,
+      });
     } else {
       Alert.alert("선택 필요", "물고기 종류를 선택해주세요.");
     }

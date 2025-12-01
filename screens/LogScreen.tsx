@@ -12,8 +12,8 @@ import {
 import { StackScreenProps } from "@react-navigation/stack";
 import { useFocusEffect } from "@react-navigation/native";
 
-import { RootStackParamList, LogEntry } from "../types";
-import { getAllLogs } from "../services/logService";
+import { RootStackParamList, LogEntry, LogType } from "../types";
+import { addLog, getAllLogs } from "../services/logService";
 
 // 이미지 미리 import
 const fishAngry = require("../FinAndFlourish/assets/images/fish_angry.png");
@@ -22,77 +22,35 @@ const fishHappy = require("../FinAndFlourish/assets/images/fish_happy.png");
 
 type LogScreenProps = StackScreenProps<RootStackParamList, "Log">;
 
-// 더미 로그 데이터
-const LOG_DATA: LogEntry[] = [
-  {
-    id: "1",
-    date: "2025/01/27 14:30",
-    type: "feed",
-    message: "먹이 급여 완료!",
-  },
-  {
-    id: "2",
-    date: "2025/01/27 12:15",
-    type: "status",
-    status: "angry",
-    message: "Goofy가 화가 난 것 같습니다...",
-  },
-  {
-    id: "3",
-    date: "2025/01/27 10:20",
-    type: "feed",
-    message: "먹이 급여 완료!",
-  },
-  {
-    id: "4",
-    date: "2025/01/27 09:45",
-    type: "status",
-    status: "worry",
-    message: "Goofy가 고민중입니다.",
-  },
-  {
-    id: "5",
-    date: "2025/01/26 18:00",
-    type: "feed",
-    message: "먹이 급여 완료!",
-  },
-  {
-    id: "6",
-    date: "2025/01/26 15:30",
-    type: "status",
-    status: "happy",
-    message: "Goofy가 기분이 좋습니다!",
-  },
-  {
-    id: "7",
-    date: "2025/01/26 12:00",
-    type: "feed",
-    message: "먹이 급여 완료!",
-  },
-  {
-    id: "8",
-    date: "2025/01/26 10:00",
-    type: "status",
-    status: "angry",
-    message: "온도 급변으로 인해 스트레스를 받았습니다.",
-  },
-];
+type FilterType = LogType | "all";
 
 export default function LogScreen({ navigation }: LogScreenProps) {
-  const [logs, setLogs] = useState<LogEntry[]>(LOG_DATA);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [filteredLogs, setFilteredLogs] = useState<LogEntry[]>([]);
+  const [activeFilter, setActiveFilter] = useState<FilterType>("all");
 
   // 화면 포커스될 때마다 로그 새로고침
   useFocusEffect(
     React.useCallback(() => {
       const loadLogs = async () => {
         const savedLogs = await getAllLogs();
-        if (savedLogs.length > 0) {
-          setLogs(savedLogs);
-        }
+        setLogs(savedLogs);
       };
       loadLogs();
     }, [])
   );
+
+  // 필터링 로직
+  useEffect(() => {
+    if (activeFilter === "all") {
+      setFilteredLogs(logs);
+    } else if (activeFilter === "feed") {
+      // '급여' 필터는 'feed'와 'auto_feed'를 모두 포함
+      setFilteredLogs(logs.filter(log => log.type === 'feed' || log.type === 'auto_feed'));
+    } else {
+      setFilteredLogs(logs.filter((log) => log.type === activeFilter));
+    }
+  }, [logs, activeFilter]);
 
   const renderItem = ({ item }: { item: LogEntry }) => {
     // 자동급여 로그
@@ -150,7 +108,7 @@ export default function LogScreen({ navigation }: LogScreenProps) {
       );
     }
 
-    // 상태 로그
+    // 상태 및 스트레스 로그
     let imgSource;
     let statusBadgeStyle;
     let statusBadgeText;
@@ -158,19 +116,30 @@ export default function LogScreen({ navigation }: LogScreenProps) {
     switch (item.status) {
       case "angry":
         imgSource = fishAngry;
-        statusBadgeStyle = styles.badgeAngry;
-        statusBadgeText = "화남";
+        statusBadgeStyle
+        statusBadgeText = "상태: 화남";
         break;
       case "worry":
         imgSource = fishWorry;
         statusBadgeStyle = styles.badgeWorry;
-        statusBadgeText = "걱정";
+        statusBadgeText = "상태: 걱정";
         break;
       case "happy":
       default:
         imgSource = fishHappy;
         statusBadgeStyle = styles.badgeHappy;
-        statusBadgeText = "행복";
+        statusBadgeText = "상태: 행복";
+    }
+
+    if (item.type === 'stress') {
+      statusBadgeStyle = styles.badgeStress;
+      statusBadgeText = "스트레스 관리";
+      // 스트레스 시작(worry)과 종료(happy)에 따라 다른 이미지 표시
+      if (item.status === 'worry') {
+        imgSource = fishWorry;
+      } else {
+        imgSource = fishHappy;
+      }
     }
 
     return (
@@ -178,13 +147,46 @@ export default function LogScreen({ navigation }: LogScreenProps) {
         <View style={styles.logHeader}>
           <Text style={styles.dateText}>{item.date}</Text>
           <View style={[styles.logTypeBadge, statusBadgeStyle]}>
-            <Text style={styles.badgeText}>{statusBadgeText}</Text>
+            <Text style={[styles.badgeText, item.type === 'stress' && styles.badgeStressText]}>{statusBadgeText}</Text>
           </View>
         </View>
         <View style={styles.logCard}>
           <Image source={imgSource} style={styles.fishImage} />
           <Text style={styles.logText}>{item.message}</Text>
         </View>
+      </View>
+    );
+  };
+
+  const renderFilterBar = () => {
+    const filters: { label: string; type: FilterType }[] = [
+      { label: "전체", type: "all" },
+      { label: "상태", type: "status" },
+      { label: "급여", type: "feed" },
+      { label: "스트레스", type: "stress" },
+    ];
+
+    return (
+      <View style={styles.filterContainer}>
+        {filters.map((filter) => (
+          <TouchableOpacity
+            key={filter.type}
+            style={[
+              styles.filterButton,
+              activeFilter === filter.type && styles.filterButtonActive,
+            ]}
+            onPress={() => setActiveFilter(filter.type)}
+          >
+            <Text
+              style={[
+                styles.filterButtonText,
+                activeFilter === filter.type && styles.filterButtonTextActive,
+              ]}
+            >
+              {filter.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
     );
   };
@@ -199,8 +201,10 @@ export default function LogScreen({ navigation }: LogScreenProps) {
         <View style={{ width: 24 }} />
       </View>
 
+      {renderFilterBar()}
+
       <FlatList
-        data={logs}
+        data={filteredLogs}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
@@ -210,7 +214,7 @@ export default function LogScreen({ navigation }: LogScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
     height: 100,
     backgroundColor: "#4D55FF",
@@ -225,7 +229,36 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 18,
   },
-  listContent: { padding: 20 },
+  filterContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  filterButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: "#F1F5F9",
+  },
+  filterButtonActive: {
+    backgroundColor: "#4D55FF",
+  },
+  filterButtonText: {
+    fontFamily: "SilkscreenBold",
+    fontSize: 12,
+    color: "#475569",
+  },
+  filterButtonTextActive: {
+    color: "#FFFFFF",
+  },
+  listContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
   logItemContainer: { marginBottom: 20 },
   logHeader: {
     flexDirection: "row",
@@ -263,6 +296,14 @@ const styles = StyleSheet.create({
   },
   badgeAngry: {
     backgroundColor: "#FEE2E2",
+  },
+  badgeStress: {
+    backgroundColor: '#FEFCE8', // Light yellow
+    borderColor: '#EAB308',
+    borderWidth: 1,
+  },
+  badgeStressText: {
+    color: '#A16207',
   },
   logCard: {
     backgroundColor: "#EAF8FC",
@@ -308,6 +349,6 @@ const styles = StyleSheet.create({
     fontFamily: "PressStart2P_400Regular",
     fontSize: 10,
     flex: 1,
-    lineHeight: 16,
+    lineHeight: 18,
   },
 });

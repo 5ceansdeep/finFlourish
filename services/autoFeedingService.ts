@@ -1,95 +1,146 @@
 // services/autoFeedingService.ts
-// 논문 기반 자동급여 로직
+// 논문 기반 자동급여 로직 - 생물량, DO, 암모니아 고려
 
-import { FishType, FishStatus } from "../types";
+import { FishType, LifeStage } from "../types";
 
 // 급여 모드 타입
 export type FeedingMode = "NORMAL" | "REDUCED" | "HOLD";
 
-// 센서 데이터 타입 (확장)
+// 확장된 센서 데이터 타입
 export interface ExtendedSensorData {
   temp: number;
   ph: number;
   tds: number;
-  status: FishStatus;
+  do?: number; // 용존산소 (mg/L)
+  tan?: number; // 총 암모니아질소 (mg/L as N)
+  nh3?: number; // 유리 암모니아 (mg/L as NH3)
+}
+
+// 급여 입력 파라미터
+export interface FeedingInput {
+  species: FishType;
+  lifeStage: LifeStage;
+  n_fish: number; // 개체수
+  w_mean: number; // 개체당 평균 체중(g)
+  v_tank: number; // 수조 용량(L)
+  sensorData: ExtendedSensorData;
+  stressEvent?: boolean; // 스트레스 이벤트 (이동, 질병, 대규모 환수 등)
+  isNightTime?: boolean; // 야간 여부
 }
 
 // 급여 결정 결과
 export interface FeedingDecision {
   mode: FeedingMode;
-  frequency: string;
-  amount: string;
-  notice: string;
-  recommendation: string;
+  dailyFeed_g: number; // 하루 총 급여량 (g)
+  feedPerTime_g: number; // 회당 급여량 (g)
+  timesPerDay: number; // 급여 횟수
+  feedPercent: number; // 체중 대비 급여율 (%BW/day)
+  recommendation: string; // 사용자 안내 메시지
+  details: string; // 상세 설명
 }
 
-// 어종별 최적 환경 기준
-const OPTIMAL_ENV = {
-  betta: {
-    temp: { min: 24, max: 28 },
-    ph: { min: 6.5, max: 7.5 },
-    tds: { min: 50, max: 200 },
-  },
-  goldfish: {
-    temp: { min: 18, max: 24 },
-    ph: { min: 7.0, max: 8.0 },
-    tds: { min: 150, max: 400 },
-  },
-  guppy: {
-    temp: { min: 24, max: 26 },
-    ph: { min: 7.2, max: 8.2 },
-    tds: { min: 300, max: 600 },
-  },
+// === 1. 최적 환경창 정의 ===
+interface OptimalEnv {
+  temp: { min: number; max: number };
+  do: number; // 최소 DO (mg/L)
+  ph: { min: number; max: number };
+}
+
+const OPTIMAL_ENV: Record<string, OptimalEnv> = {
+  betta_juvenile: { temp: { min: 26, max: 30 }, do: 5, ph: { min: 6.5, max: 7.5 } },
+  betta_adult: { temp: { min: 24, max: 30 }, do: 5, ph: { min: 6.0, max: 7.5 } },
+  goldfish_juvenile: { temp: { min: 20, max: 26 }, do: 6, ph: { min: 6.5, max: 8.0 } },
+  goldfish_adult: { temp: { min: 18, max: 26 }, do: 5, ph: { min: 6.5, max: 8.0 } },
+  guppy_juvenile: { temp: { min: 24, max: 28 }, do: 5, ph: { min: 6.5, max: 7.5 } },
+  guppy_adult: { temp: { min: 22, max: 28 }, do: 5, ph: { min: 6.5, max: 7.5 } },
 };
 
-// 어종별 정상 급여 기준 (성어 기준)
-const NORMAL_FEED = {
-  betta: {
-    frequency: "하루 2회",
-    amount: "소량 (3-5알)",
-    notice: "고단백 사료 권장",
-  },
-  goldfish: {
-    frequency: "하루 1-2회",
-    amount: "1분 내 섭취량",
-    notice: "침강성 소화 사료",
-  },
-  guppy: {
-    frequency: "하루 2-3회",
-    amount: "소량 (1분 섭취량)",
-    notice: "치어는 고빈도 소량",
-  },
+// === 2. 기본 급여율 (%BW/day) ===
+interface FeedRange {
+  min: number;
+  max: number;
+}
+
+const NORMAL_FEED: Record<string, FeedRange> = {
+  betta_juvenile: { min: 5, max: 10 },
+  betta_adult: { min: 1, max: 2 },
+  goldfish_juvenile: { min: 2, max: 3 },
+  goldfish_adult: { min: 1.5, max: 2 },
+  guppy_juvenile: { min: 5, max: 10 },
+  guppy_adult: { min: 2, max: 3 },
 };
 
-/**
- * 급여 모드 판정 로직
- * HOLD → REDUCED → NORMAL 순서로 체크
- */
+// === 3. 급여 횟수 (회/일) ===
+const FEEDING_FREQUENCY: Record<string, number> = {
+  betta_juvenile: 4,
+  betta_adult: 2,
+  goldfish_juvenile: 3,
+  goldfish_adult: 2,
+  guppy_juvenile: 4,
+  guppy_adult: 2,
+};
+
+// === 4. 암모니아 임계값 ===
+const AMMONIA_THRESHOLDS = {
+  TAN_TARGET: 0.5,
+  TAN_WARNING: 1.0,
+  NH3_TARGET: 0.02,
+  NH3_WARNING: 0.05,
+};
+
+// === 5. 급여 모드 판정 로직 ===
 export function determineFeedingMode(
-  fishType: FishType,
-  sensorData: ExtendedSensorData
+  input: FeedingInput
 ): FeedingMode {
-  const { temp, ph, tds, status } = sensorData;
-  const optimal = OPTIMAL_ENV[fishType];
+  const { species, lifeStage, sensorData, stressEvent } = input;
+  const { temp, do: doValue, tan, nh3 } = sensorData;
 
-  // 1) HOLD - 즉시 금식 필요 (Angry 상태)
-  if (status === "angry") {
+  const speciesKey = `${species}_${lifeStage}`;
+  const optimal = OPTIMAL_ENV[speciesKey];
+
+  // DO가 없으면 기본값 사용 (안전하게 NORMAL 가정)
+  const currentDO = doValue ?? 6;
+  const currentTAN = tan ?? 0;
+  const currentNH3 = nh3 ?? 0;
+
+  // 1) HOLD - 즉시 금식 필요
+  // 스트레스 이벤트
+  if (stressEvent === true) {
     return "HOLD";
   }
 
-  // 2) REDUCED - 감량 모드 (Worry 상태 또는 환경 경계 구간)
-  if (status === "worry") {
+  // 암모니아 위험
+  if (currentNH3 > AMMONIA_THRESHOLDS.NH3_WARNING ||
+      currentTAN > AMMONIA_THRESHOLDS.TAN_WARNING) {
+    return "HOLD";
+  }
+
+  // DO 위험 (베타 성어는 라비린스로 DO 3까지 버팀)
+  if (species === "betta" && lifeStage === "adult") {
+    if (currentDO < 3) return "HOLD";
+  } else {
+    if (currentDO < 4) return "HOLD";
+  }
+
+  // 2) REDUCED - 감량 모드
+  // DO 경계
+  if (currentDO < optimal.do) {
     return "REDUCED";
   }
 
-  // 추가 환경 체크 (Happy 상태라도 환경이 경계에 있으면 REDUCED)
-  if (
-    temp > optimal.temp.max - 1 || // 최대 온도 -1도 이내
-    temp < optimal.temp.min + 1 || // 최소 온도 +1도 이내
-    ph > optimal.ph.max - 0.2 ||
-    ph < optimal.ph.min + 0.2 ||
-    tds > optimal.tds.max - 50
-  ) {
+  // 암모니아 경계
+  if (currentNH3 >= AMMONIA_THRESHOLDS.NH3_TARGET ||
+      currentTAN >= AMMONIA_THRESHOLDS.TAN_TARGET) {
+    return "REDUCED";
+  }
+
+  // 온도 경계 (최적범위 벗어남)
+  if (temp < optimal.temp.min || temp > optimal.temp.max) {
+    return "REDUCED";
+  }
+
+  // pH 경계
+  if (sensorData.ph < optimal.ph.min || sensorData.ph > optimal.ph.max) {
     return "REDUCED";
   }
 
@@ -97,137 +148,234 @@ export function determineFeedingMode(
   return "NORMAL";
 }
 
-/**
- * 급여량 및 전략 계산
- */
-export function calculateFeedingStrategy(
-  mode: FeedingMode,
-  fishType: FishType,
-  status: FishStatus
-): FeedingDecision {
-  const normalFeed = NORMAL_FEED[fishType];
-
-  // NORMAL 모드
-  if (mode === "NORMAL") {
-    return {
-      mode: "NORMAL",
-      frequency: normalFeed.frequency,
-      amount: normalFeed.amount,
-      notice: normalFeed.notice,
-      recommendation: "✅ 최적 환경입니다. 정상 급여하세요.",
-    };
-  }
-
-  // REDUCED 모드
-  if (mode === "REDUCED") {
-    const reducedStrategies: Record<
-      FishType,
-      { frequency: string; amount: string; notice: string }
-    > = {
-      betta: {
-        frequency: "하루 1회",
-        amount: "소량 (2알)",
-        notice: "소화 잘 되는 사료",
-      },
-      goldfish: {
-        frequency: "2-3일에 1회",
-        amount: "극소량",
-        notice: "식물성 사료 권장",
-      },
-      guppy: {
-        frequency: "하루 1회",
-        amount: "극소량",
-        notice: "잔반 없도록 철저 관리",
-      },
-    };
-
-    return {
-      mode: "REDUCED",
-      frequency: reducedStrategies[fishType].frequency,
-      amount: reducedStrategies[fishType].amount,
-      notice: reducedStrategies[fishType].notice,
-      recommendation:
-        "⚠️ 수질 주의 구간입니다. 급여량을 50% 감량하세요.",
-    };
-  }
-
-  // HOLD 모드
-  const holdNotices: Record<FishType, string> = {
-    betta: "라비린스 기관이 있어도 극한 환경에서는 소화 활동이 산소 부족을 가속화합니다.",
-    goldfish:
-      "30°C 이상에서 유산소 대사 능력이 붕괴됩니다. 소화 과정(SDA)은 질식사 위험을 높입니다.",
-    guppy:
-      "아가미가 작아 암모니아 독성에 매우 취약합니다. 치명적인 수질에서는 생존에 전념해야 합니다.",
+// === 6. 생애 단계별 체중 보정 ===
+function weightFactor(w_mean: number, species: FishType, _lifeStage: LifeStage): number {
+  // 종별 기준 체중 (g) - 대략적인 값
+  const W_REF: Record<string, { juvenile: number; adult: number }> = {
+    betta: { juvenile: 0.5, adult: 3 },
+    goldfish: { juvenile: 5, adult: 50 },
+    guppy: { juvenile: 0.2, adult: 1 },
   };
 
+  const ref = W_REF[species];
+
+  if (w_mean < ref.juvenile) {
+    return 1.1; // 매우 어린 개체 - 10% 상향
+  }
+
+  if (w_mean >= ref.juvenile && w_mean <= ref.adult) {
+    return 1.0; // 기준 그대로
+  }
+
+  if (w_mean > ref.adult) {
+    return 0.8; // 큰 성어 - 20% 감량
+  }
+
+  return 1.0;
+}
+
+// === 7. 생물량 밀도 보정 ===
+function densityFactor(density: number): number {
+  // density = W_total / V_tank (g/L)
+
+  if (density < 0.2) {
+    return 1.0; // 저밀도
+  }
+
+  if (density >= 0.2 && density < 0.5) {
+    return 0.9; // 약간 감량
+  }
+
+  if (density >= 0.5 && density < 1.0) {
+    return 0.8; // 중간~고밀도
+  }
+
+  if (density >= 1.0) {
+    return 0.6; // 매우 고밀도 - 40% 감량
+  }
+
+  return 1.0;
+}
+
+// === 8. 모드별 전역 감량 계수 ===
+function modeFactor(mode: FeedingMode): number {
+  switch (mode) {
+    case "NORMAL":
+      return 1.0;
+    case "REDUCED":
+      return 0.5; // 50% 감량
+    case "HOLD":
+      return 0.0; // 금식
+  }
+}
+
+// === 9. 기본 급여율 가져오기 ===
+function getBaseFeedPercent(species: FishType, lifeStage: LifeStage): number {
+  const key = `${species}_${lifeStage}`;
+  const range = NORMAL_FEED[key];
+  return (range.min + range.max) / 2; // 평균값 사용
+}
+
+// === 10. 급여 횟수 가져오기 ===
+function getFeedingFrequency(species: FishType, lifeStage: LifeStage, mode: FeedingMode): number {
+  if (mode === "HOLD") return 0;
+
+  const key = `${species}_${lifeStage}`;
+  const normalFreq = FEEDING_FREQUENCY[key];
+
+  // REDUCED 모드에서는 횟수도 줄임
+  if (mode === "REDUCED") {
+    return Math.max(1, Math.floor(normalFreq / 2));
+  }
+
+  return normalFreq;
+}
+
+// === 11. 최종 급여량 계산 ===
+export function computeDailyFeed(input: FeedingInput): FeedingDecision {
+  const { species, lifeStage, n_fish, w_mean, v_tank, sensorData, isNightTime } = input;
+
+  const w_total = n_fish * w_mean; // 총 생물량 (g)
+  const density = w_total / v_tank; // 밀도 (g/L)
+
+  // 1. 모드 판정
+  const mode = determineFeedingMode(input);
+
+  // 2. 각 보정 계수 계산
+  const basePercent = getBaseFeedPercent(species, lifeStage);
+  const wFactor = weightFactor(w_mean, species, lifeStage);
+  const dFactor = densityFactor(density);
+  const mFactor = modeFactor(mode);
+
+  // 3. 최종 급여율 계산
+  let finalPercent = basePercent * wFactor * dFactor * mFactor;
+
+  // 4. 금붕어 특수 보정
+  if (species === "goldfish") {
+    // 고온 보정
+    if (sensorData.temp >= 28) {
+      finalPercent *= 0.7; // 30% 추가 감량
+    }
+
+    // 야간 보정
+    if (isNightTime === true) {
+      finalPercent *= 0.3; // 야간 70% 감량
+    }
+  }
+
+  // 5. 하루 총 급여량 (g)
+  const dailyFeed_g = w_total * (finalPercent / 100.0);
+
+  // 6. 급여 횟수
+  const timesPerDay = getFeedingFrequency(species, lifeStage, mode);
+
+  // 7. 회당 급여량
+  const feedPerTime_g = timesPerDay > 0 ? dailyFeed_g / timesPerDay : 0;
+
+  // 8. 사용자 안내 메시지 생성
+  const recommendation = generateRecommendation(mode, species, sensorData);
+  const details = generateDetails(input, mode, finalPercent, density);
+
   return {
-    mode: "HOLD",
-    frequency: "급여 중단",
-    amount: "0",
-    notice: "금식 필수",
-    recommendation: `🚨 위험 구간입니다. 즉시 급여를 중단하세요.\n${holdNotices[fishType]}`,
+    mode,
+    dailyFeed_g,
+    feedPerTime_g,
+    timesPerDay,
+    feedPercent: finalPercent,
+    recommendation,
+    details,
   };
 }
 
-/**
- * 자동급여 컨트롤러 - 메인 함수
- */
+// === 12. 사용자 안내 메시지 생성 ===
+function generateRecommendation(
+  mode: FeedingMode,
+  species: FishType,
+  sensorData: ExtendedSensorData
+): string {
+  if (mode === "NORMAL") {
+    return "✅ 최적 환경입니다. 정상 급여하세요.";
+  }
+
+  if (mode === "REDUCED") {
+    const reasons = [];
+
+    if (sensorData.do !== undefined && sensorData.do < 5) {
+      reasons.push("DO 낮음");
+    }
+    if (sensorData.tan !== undefined && sensorData.tan >= 0.5) {
+      reasons.push("암모니아 주의");
+    }
+    if (sensorData.temp < 20 || sensorData.temp > 28) {
+      reasons.push("온도 경계");
+    }
+
+    const reasonText = reasons.length > 0 ? ` (${reasons.join(", ")})` : "";
+    return `⚠️ 수질 주의 구간입니다${reasonText}. 급여량 50% 감량하세요.`;
+  }
+
+  // HOLD
+  const holdReasons: Record<FishType, string> = {
+    betta: "수질 악화로 급여 중단",
+    goldfish: "고온/수질 악화로 급여 중단",
+    guppy: "수질 위험으로 급여 중단",
+  };
+
+  return `🚨 ${holdReasons[species]}`;
+}
+
+// === 13. 상세 정보 생성 ===
+function generateDetails(
+  input: FeedingInput,
+  mode: FeedingMode,
+  finalPercent: number,
+  density: number
+): string {
+  const { species, lifeStage, n_fish, w_mean, sensorData } = input;
+  const w_total = n_fish * w_mean;
+
+  const speciesName = species === "betta" ? "베타" : species === "goldfish" ? "금붕어" : "구피";
+  const stageName = lifeStage === "juvenile" ? "치어" : "성어";
+
+  const lines = [
+    `어종: ${speciesName} (${stageName})`,
+    `개체수: ${n_fish}마리, 평균체중: ${w_mean.toFixed(1)}g`,
+    `총 생물량: ${w_total.toFixed(1)}g, 밀도: ${density.toFixed(2)}g/L`,
+    `급여율: ${finalPercent.toFixed(2)}% BW/day`,
+    `모드: ${mode}`,
+  ];
+
+  if (sensorData.do !== undefined) {
+    lines.push(`DO: ${sensorData.do.toFixed(1)} mg/L`);
+  }
+  if (sensorData.tan !== undefined) {
+    lines.push(`TAN: ${sensorData.tan.toFixed(2)} mg/L`);
+  }
+
+  return lines.join("\n");
+}
+
+// === 14. 간단한 컨트롤러 함수 (기존 호환성 유지) ===
 export function autoFeedingController(
   fishType: FishType,
   sensorData: ExtendedSensorData
-): FeedingDecision {
-  const mode = determineFeedingMode(fishType, sensorData);
-  const decision = calculateFeedingStrategy(mode, fishType, sensorData.status);
-
-  // 금붕어 야간 급여 제한 로직 (실제 구현 시 시간 체크 추가)
-  // if (fishType === "goldfish" && isNightTime()) {
-  //   decision.recommendation += "\n🌙 야간에는 최소 급여만 하세요 (MO2 상승 고려).";
-  // }
-
-  return decision;
-}
-
-/**
- * 어종별 급여 가이드 설명 (UI 표시용)
- */
-export function getFeedingGuideText(fishType: FishType): {
-  title: string;
-  strategy: string[];
-  warning: string;
-} {
-  const guides = {
-    betta: {
-      title: "베타 급여 전략",
-      strategy: [
-        "• 치어는 DO 의존도 높음 → 환경 나빠지면 최우선 감량",
-        "• 성어는 라비린스가 있지만 암모니아에 취약",
-        "• NH₃ 감지 시 즉시 REDUCED 모드 전환",
-        "• 고단백 사료로 소량 분할 급여",
-      ],
-      warning: "⚠️ 극한 환경에서 소화 활동은 산소 부족을 가속화합니다.",
-    },
-    goldfish: {
-      title: "금붕어 급여 전략",
-      strategy: [
-        "• 환경 악화 시 금식 임계 빠르게 도달",
-        "• 야간 대량 급여 금지 (SDA로 산소 소비 35% 증가)",
-        "• 고온(>28°C)에서 자동 REDUCED 전환",
-        "• 침강성 소화 사료로 1분 내 섭취량만",
-      ],
-      warning:
-        "🚨 30°C 이상에서 유산소 대사 능력 붕괴. 밤에는 급여량 70% 축소.",
-    },
-    guppy: {
-      title: "구피 급여 전략",
-      strategy: [
-        "• '버틴다'를 '급여해도 된다'로 착각 금지",
-        "• 수질 악화(DO<5, TAN>0.5) 시 REDUCED 우선",
-        "• 오염 발생 시 즉시 급여 감량 → 수질 회복 최우선",
-        "• 치어는 고빈도 소량 급여 (하루 3-5회)",
-      ],
-      warning: "⚠️ 아가미가 작아 암모니아 독성 호흡 곤란에 매우 취약합니다.",
-    },
+): { mode: FeedingMode; recommendation: string } {
+  // 기본값으로 간단하게 계산 (생물량 정보 없을 때)
+  const input: FeedingInput = {
+    species: fishType,
+    lifeStage: "adult",
+    n_fish: 1,
+    w_mean: 3, // 기본 성어 체중
+    v_tank: 10, // 기본 10L
+    sensorData,
+    stressEvent: false,
+    isNightTime: false,
   };
 
-  return guides[fishType];
+  const decision = computeDailyFeed(input);
+
+  return {
+    mode: decision.mode,
+    recommendation: decision.recommendation,
+  };
 }

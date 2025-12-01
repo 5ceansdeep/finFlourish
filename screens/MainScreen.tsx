@@ -19,7 +19,7 @@ import * as Notifications from "expo-notifications";
 
 import { useSensorData, feedFish, executeAutoFeed } from "../services/sensorService";
 import { RootStackParamList, FishStatus, Fish, FishType } from "../types";
-import { getCurrentFish } from "../services/fishStorage";
+import { getCurrentFish, setStressMode, clearStressMode } from "../services/fishStorage";
 import {
   autoFeedingController,
 } from "../services/autoFeedingService";
@@ -127,7 +127,27 @@ export default function MainScreen({ navigation }: MainScreenProps) {
   // 화면 포커스될 때마다 현재 물고기 정보 갱신
   useFocusEffect(
     useCallback(() => {
-      loadCurrentFish();
+      const checkStressExpirationAndLoad = async () => {
+        const fish = await getCurrentFish();
+        if (fish && fish.stressUntil && new Date(fish.stressUntil) < new Date()) {
+          console.log(`${fish.name}의 스트레스 모드가 만료되었습니다. 로그를 기록합니다.`);
+          await addLog({
+            // 만료된 시점을 기준으로 로그 시간 기록
+            date: new Date(fish.stressUntil).toLocaleString("ko-KR"),
+            type: "stress",
+            status: "happy", // 스트레스가 끝났으므로 'happy'로 기록
+            message: `${fish.name}의 스트레스 관리가 종료되었습니다.`,
+          });
+          await clearStressMode(fish.id);
+          // 상태가 변경되었으므로 물고기 정보를 다시 로드
+          const updatedFish = await getCurrentFish();
+          setCurrentFish(updatedFish);
+        } else {
+          setCurrentFish(fish);
+        }
+      };
+
+      checkStressExpirationAndLoad();
     }, [])
   );
 
@@ -151,8 +171,15 @@ export default function MainScreen({ navigation }: MainScreenProps) {
 
   // 자동급여 실행 로직
   useEffect(() => {
+    // 스트레스 모드인지 확인
+    const isStressMode =
+      currentFish?.stressUntil && new Date(currentFish.stressUntil) > new Date();
+
     const checkAndExecuteAutoFeed = async () => {
-      if (isLoading || !autoFeedOn) return;
+      if (isLoading || !autoFeedOn || isStressMode) {
+        if (isStressMode) console.log("스트레스 모드이므로 자동급여를 건너뜁니다.");
+        return;
+      }
 
       const shouldFeed = await shouldFeedNow();
       if (!shouldFeed) return;
@@ -169,8 +196,8 @@ export default function MainScreen({ navigation }: MainScreenProps) {
           date: new Date().toLocaleString("ko-KR"),
           type: "auto_feed",
           message: shouldExecute
-            ? `🤖 자동급여 실행 (${mode})`
-            : `🤖 자동급여 중단 - ${autoFeeding.recommendation}`,
+            ? `자동급여 완료`
+            : autoFeeding.recommendation,
           autoFeedData: {
             executed: shouldExecute,
             mode,
@@ -202,7 +229,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
     };
 
     checkAndExecuteAutoFeed();
-  }, [sensorData, isLoading, autoFeedOn, autoFeeding, fishType, fishName]);
+  }, [sensorData, isLoading, autoFeedOn, autoFeeding, fishType, fishName, currentFish]);
 
   const normalizeValue = (value: number, min: number, max: number): number => {
     return Math.min(1.0, Math.max(0.0, (value - min) / (max - min)));
@@ -309,29 +336,39 @@ export default function MainScreen({ navigation }: MainScreenProps) {
     let imageSource;
     let statusText: string;
     let bgColor: string;
+    
+    const isStressMode =
+      currentFish?.stressUntil && new Date(currentFish.stressUntil) > new Date();
 
-    switch (sensorData.status) {
-      case "angry":
-        imageSource = fishAngry;
-        statusText = `${fishName}(이)가 화가 난 것 같습니다...`;
-        bgColor = "#FFE5E5";
-        break;
-      case "worry":
-        imageSource = fishWorry;
-        statusText = `${fishName}(이)가 걱정하고 있습니다.`;
-        bgColor = "#FFF8E5";
-        break;
-      default:
-        imageSource = fishHappy;
-        statusText = `${fishName}(이)가 기분이 좋아요!`;
-        bgColor = "#E5F8FF";
+    if (isStressMode) {
+      imageSource = fishWorry;
+      statusText = `${fishName}(이)가 스트레스를 받고 있습니다.`;
+      bgColor = "#FFF8E5"; // worry color
+    } else {
+      switch (sensorData.status) {
+        case "angry":
+          imageSource = fishAngry;
+          statusText = `${fishName}(이)가 화가 난 것 같습니다...`;
+          bgColor = "#FFE5E5";
+          break;
+        case "worry":
+          imageSource = fishWorry;
+          statusText = `${fishName}(이)가 걱정하고 있습니다.`;
+          bgColor = "#FFF8E5";
+          break;
+        default:
+          imageSource = fishHappy;
+          statusText = `${fishName}(이)가 기분이 좋아요!`;
+          bgColor = "#E5F8FF";
+      }
     }
 
     return (
       <View>
         <Text style={styles.sectionTitle}>오늘의 상태</Text>
         <TouchableOpacity
-          style={[styles.statusCard, { backgroundColor: bgColor }]}
+          // 스트레스 모드일 때는 탭 비활성화
+          style={[styles.statusCard, { backgroundColor: bgColor }]} 
           onPress={explainFishStatus}
           activeOpacity={0.7}
         >
@@ -346,6 +383,77 @@ export default function MainScreen({ navigation }: MainScreenProps) {
             <Text style={styles.tapHint}>탭하여 자세히 보기</Text>
           </View>
         </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // 스트레스 모드 관리
+  const handleSetStressMode = async (reason: string) => {
+    if (currentFish) {
+      try {
+        await setStressMode(currentFish.id);
+
+        // 스트레스 모드 시작 로그 추가
+        await addLog({
+          date: new Date().toLocaleString("ko-KR"),
+          type: "stress",
+          status: "worry", // 스트레스 시작이므로 'worry'로 기록
+          message: `${currentFish.name}의 스트레스 관리를 시작합니다. (${reason})`,
+        });
+
+        Alert.alert(
+          `${reason} 완료`,
+          `${currentFish.name}이(가) 24시간 동안 스트레스 관리 모드로 전환됩니다. 이 시간 동안 자동 급여가 중단됩니다.`,
+          [{ text: "확인", onPress: loadCurrentFish }]
+        );
+      } catch (error) {
+        Alert.alert("오류", "스트레스 모드 설정에 실패했습니다.");
+      }
+    }
+  };
+
+  const handleClearStressMode = async () => {
+    if (currentFish) {
+      try {
+        await clearStressMode(currentFish.id);
+        Alert.alert(
+          "스트레스 모드 해제",
+          `${currentFish.name}의 스트레스 관리 모드가 해제되었습니다.`,
+          [{ text: "확인", onPress: loadCurrentFish }]
+        );
+      } catch (error) {
+        Alert.alert("오류", "스트레스 모드 해제에 실패했습니다.");
+      }
+    }
+  };
+
+  // 스트레스 모드 UI 렌더링
+  const renderStressModeSection = () => {
+    const isStressMode =
+      currentFish?.stressUntil && new Date(currentFish.stressUntil) > new Date();
+
+    return (
+      <View style={styles.stressModeSection}>
+        <Text style={styles.sectionTitle}>스트레스 관리</Text>
+        {isStressMode ? (
+          <View style={styles.stressModeCardActive}>
+            <Text style={styles.stressModeText}>
+              현재 스트레스 관리 모드입니다. (만료: {formatTimeUntil(Math.floor((new Date(currentFish!.stressUntil!).getTime() - new Date().getTime()) / 60000))})
+            </Text>
+            <TouchableOpacity style={styles.stressModeButtonInactive} onPress={handleClearStressMode}>
+              <Text style={styles.stressModeButtonText}>모드 해제</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.stressModeCardInactive}>
+            <TouchableOpacity style={styles.stressModeButton} onPress={() => handleSetStressMode("환수")}>
+              <Text style={styles.stressModeButtonText}>환수 완료</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.stressModeButton} onPress={() => handleSetStressMode("물고기 이동")}>
+              <Text style={styles.stressModeButtonText}>물고기 이동</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   };
@@ -402,6 +510,8 @@ export default function MainScreen({ navigation }: MainScreenProps) {
           </View>
         </View>
 
+        {renderStressModeSection()}
+
         <View style={styles.autoFeedingSection}>
           <Text style={styles.sectionTitle}>자동급여 시스템</Text>
 
@@ -437,7 +547,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
             <View style={styles.feedbackDetails}>
               <Text style={styles.feedbackDetailLabel}>현재 수질:</Text>
               <Text style={styles.feedbackDetailValue}>
-                T: {sensorData.temp.toFixed(1)}°C, pH:{" "}
+                TEMP: {sensorData.temp.toFixed(1)}°C, pH:{" "}
                 {sensorData.ph.toFixed(1)}, TDS: {sensorData.tds}ppm
               </Text>
             </View>
@@ -703,78 +813,93 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   feedbackCard: {
-    borderRadius: 16,
-    padding: 18,
+    borderRadius: 20,
+    padding: 22,
     marginBottom: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
   },
   feedbackNormal: {
-    backgroundColor: "#E5F8FF",
+    backgroundColor: "#ECFDF5",
   },
   feedbackReduced: {
-    backgroundColor: "#FFF8E5",
+    backgroundColor: "#FFFBEB",
   },
   feedbackHold: {
-    backgroundColor: "#FFE5E5",
+    backgroundColor: "#FEF2F2",
   },
   feedbackHeader: {
-    marginBottom: 12,
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
   },
   feedbackTitle: {
-    fontFamily: "PixelifySans",
-    fontSize: 15,
+    fontFamily: "SilkscreenBold",
+    fontSize: 16,
     color: "#1E293B",
   },
   feedbackText: {
     fontFamily: "PixelifySans",
-    fontSize: 13,
+    fontSize: 14,
     color: "#334155",
-    lineHeight: 20,
-    marginBottom: 12,
+    lineHeight: 22,
+    marginBottom: 16,
   },
   feedbackDetails: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 8,
+    backgroundColor: "#F8FAFC",
+    padding: 10,
+    borderRadius: 10,
   },
   feedbackDetailLabel: {
     fontFamily: "SilkscreenBold",
-    fontSize: 11,
+    fontSize: 14,
     color: "#64748B",
     marginRight: 8,
+    minWidth: 60,
   },
   feedbackDetailValue: {
     fontFamily: "PixelifySans",
-    fontSize: 11,
-    color: "#475569",
+    fontSize: 12,
+    color: "#1E293B",
     flex: 1,
   },
   timerCard: {
-    backgroundColor: "#F8FAFC",
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 2,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+    borderWidth: 1,
     borderColor: "#E2E8F0",
   },
   timerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
   },
   timerLabel: {
     fontFamily: "SilkscreenBold",
-    fontSize: 13,
-    color: "#475569",
+    fontSize: 14,
+    color: "#1E293B",
   },
   timerValue: {
     fontFamily: "PixelifySans",
-    fontSize: 14,
-    color: "#1E293B",
+    fontSize: 15,
+    color: "#4D55FF",
+    fontWeight: "600",
   },
   statusOn: {
     color: "#10B981",
@@ -897,4 +1022,51 @@ const styles = StyleSheet.create({
     color: "#1E293B",
     textAlign: "center",
   },
+  stressModeSection: {
+    marginBottom: 24,
+  },
+  stressModeCardInactive: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  stressModeCardActive: {
+    backgroundColor: "#FFFBEB",
+    borderRadius: 20,
+    padding: 20,
+    alignItems: "center",
+    shadowColor: "#F59E0B",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  stressModeText: {
+    fontFamily: "PixelifySans",
+    fontSize: 13,
+    color: "#B45309",
+    marginBottom: 16,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  stressModeButton: {
+    backgroundColor: "#4D55FF",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+  },
+  stressModeButtonInactive: {
+    backgroundColor: "#F59E0B",
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  stressModeButtonText: { color: "#FFFFFF", fontFamily: "SilkscreenBold", fontSize: 12 },
 });

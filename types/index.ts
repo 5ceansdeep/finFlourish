@@ -8,6 +8,11 @@ import { StackNavigationProp } from "@react-navigation/stack";
 export type FishType = "betta" | "goldfish" | "guppy";
 
 /**
+ * 물고기 생애 단계
+ */
+export type LifeStage = "juvenile" | "adult";
+
+/**
  * 물고기 정보 인터페이스
  */
 export interface Fish {
@@ -15,6 +20,10 @@ export interface Fish {
   name: string;
   type: FishType;
   createdAt: string;
+  lifeStage?: LifeStage; // 생애 단계 (선택)
+  weight?: number; // 개체당 평균 체중(g)
+  count?: number; // 개체수
+  stressUntil?: string; // 스트레스 모드 만료 시간 (ISO 8601)
 }
 
 /**
@@ -31,12 +40,15 @@ export interface SensorData {
   ph: number;
   status: FishStatus; // 현재 물고기 상태
   fishType: FishType; // 현재 물고기 종류
+  do?: number; // 용존산소 (mg/L) - 선택
+  tan?: number; // 총 암모니아질소 (mg/L as N) - 선택
+  nh3?: number; // 유리 암모니아 (mg/L as NH3) - 선택
 }
 
 /**
  * 로그 타입 정의
  */
-export type LogType = "status" | "feed" | "auto_feed";
+export type LogType = "status" | "feed" | "auto_feed" | "stress";
 
 /**
  * 로그 기록 항목 구조 정의
@@ -64,5 +76,6 @@ export type RootStackParamList = {
   Log: undefined;
   FishName: undefined;
   FishType: { fishName: string };
+  FishDetail: { fishName: string; fishType: FishType };
   MyFish: undefined;
 };

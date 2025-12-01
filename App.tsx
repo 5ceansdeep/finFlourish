@@ -16,6 +16,7 @@ import MainScreen from "./screens/MainScreen";
 import LogScreen from "./screens/LogScreen";
 import FishNameScreen from "./screens/FishNameScreen";
 import FishTypeScreen from "./screens/FishTypeScreen";
+import FishDetailScreen from "./screens/FishDetailScreen";
 import MyFishScreen from "./screens/MyFishScreen";
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -53,6 +54,7 @@ export default function App() {
         <Stack.Screen name="Log" component={LogScreen} />
         <Stack.Screen name="FishName" component={FishNameScreen} />
         <Stack.Screen name="FishType" component={FishTypeScreen} />
+        <Stack.Screen name="FishDetail" component={FishDetailScreen} />
         <Stack.Screen name="MyFish" component={MyFishScreen} />
       </Stack.Navigator>
     </NavigationContainer>
