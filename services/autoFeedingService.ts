@@ -88,12 +88,28 @@ const AMMONIA_THRESHOLDS = {
   NH3_WARNING: 0.05,
 };
 
+/**
+ * 총 암모니아 질소(TAN), 온도, pH를 기반으로 유리 암모니아(NH3) 농도를 계산합니다.
+ * @param tan 총 암모니아 질소 (mg/L as N)
+ * @param temp 온도 (°C)
+ * @param ph pH 값
+ * @returns 유리 암모니아 농도 (mg/L as NH3)
+ */
+export function calculateFreeAmmonia(tan: number, temp: number, ph: number): number {
+  // pKa = 0.09018 + 2729.92 / (T + 273.15), T는 섭씨 온도
+  const pKa = 0.09018 + 2729.92 / (temp + 273.15);
+  // NH3 분율 = 1 / (1 + 10^(pKa - pH))
+  const fraction = 1 / (1 + Math.pow(10, pKa - ph));
+  // NH3 농도 = TAN * NH3 분율
+  return tan * fraction;
+}
+
 // === 5. 급여 모드 판정 로직 ===
 export function determineFeedingMode(
   input: FeedingInput
 ): FeedingMode {
   const { species, lifeStage, sensorData, stressEvent } = input;
-  const { temp, do: doValue, tan, nh3 } = sensorData;
+  const { temp, ph, do: doValue, tan } = sensorData;
 
   const speciesKey = `${species}_${lifeStage}`;
   const optimal = OPTIMAL_ENV[speciesKey];
@@ -101,7 +117,8 @@ export function determineFeedingMode(
   // DO가 없으면 기본값 사용 (안전하게 NORMAL 가정)
   const currentDO = doValue ?? 6;
   const currentTAN = tan ?? 0;
-  const currentNH3 = nh3 ?? 0;
+  // NH3가 없으면 TAN, 온도, pH로 계산
+  const currentNH3 = sensorData.nh3 ?? (tan !== undefined ? calculateFreeAmmonia(tan, temp, ph) : 0);
 
   // 1) HOLD - 즉시 금식 필요
   // 스트레스 이벤트

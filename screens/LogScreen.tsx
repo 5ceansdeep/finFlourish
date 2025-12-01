@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import { StackScreenProps } from "@react-navigation/stack";
 import { useFocusEffect } from "@react-navigation/native";
-
 import { RootStackParamList, LogEntry, LogType } from "../types";
 import { addLog, getAllLogs } from "../services/logService";
 
@@ -116,7 +115,7 @@ export default function LogScreen({ navigation }: LogScreenProps) {
     switch (item.status) {
       case "angry":
         imgSource = fishAngry;
-        statusBadgeStyle
+        statusBadgeStyle = styles.badgeAngry;
         statusBadgeText = "상태: 화남";
         break;
       case "worry":
@@ -223,11 +222,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingBottom: 15,
     paddingHorizontal: 20,
+    borderBottomLeftRadius: 15,
+    borderBottomRightRadius: 15,
   },
   headerTitle: {
-    fontFamily: "PressStart2P_400Regular",
+    fontFamily: "SilkscreenBold",
     color: "white",
-    fontSize: 18,
+    fontSize: 16,
   },
   filterContainer: {
     flexDirection: "row",
@@ -267,7 +268,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   dateText: {
-    fontFamily: "PressStart2P_400Regular",
+    fontFamily: "PixelifySans",
     fontSize: 10,
     color: "#888",
   },
@@ -278,7 +279,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   badgeText: {
-    fontFamily: "PressStart2P_400Regular",
+    fontFamily: "SilkscreenRegular",
     fontSize: 8,
     color: "#4338CA",
   },
@@ -339,14 +340,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   autoFeedMode: {
-    fontFamily: "PressStart2P_400Regular",
+    fontFamily: "PixelifySans",
     fontSize: 8,
     color: "#64748B",
     marginTop: 6,
   },
   fishImage: { width: 40, height: 40, resizeMode: "contain", marginRight: 15 },
   logText: {
-    fontFamily: "PressStart2P_400Regular",
+    fontFamily: "PixelifySans",
     fontSize: 10,
     flex: 1,
     lineHeight: 18,

@@ -18,11 +18,9 @@ import { useFocusEffect } from "@react-navigation/native";
 import * as Notifications from "expo-notifications";
 
 import { useSensorData, feedFish, executeAutoFeed } from "../services/sensorService";
-import { RootStackParamList, FishStatus, Fish, FishType } from "../types";
+import { RootStackParamList, Fish, FishType, FishStatus } from "../types";
 import { getCurrentFish, setStressMode, clearStressMode } from "../services/fishStorage";
-import {
-  autoFeedingController,
-} from "../services/autoFeedingService";
+import { autoFeedingController } from "../services/autoFeedingService";
 import {
   getLastAutoFeedTime,
   setLastAutoFeedTime,
@@ -55,6 +53,8 @@ const fishHappy = require("../FinAndFlourish/assets/images/fish_happy.png");
 const logoImage = require("../FinAndFlourish/assets/images/logo.png");
 
 type MainScreenProps = StackScreenProps<RootStackParamList, "Main">;
+
+type FeedingMode = "NORMAL" | "REDUCED" | "HOLD";
 
 interface GaugeProps {
   label: string;
@@ -104,7 +104,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
 export default function MainScreen({ navigation }: MainScreenProps) {
   const [sensorData, isLoading, error, refetch] = useSensorData();
   const [currentFish, setCurrentFish] = useState<Fish | null>(null);
-  const prevStatusRef = useRef<FishStatus>(sensorData.status);
+  const prevStatusRef = useRef<FeedingMode | undefined>(undefined);
 
   // 자동급여 상태
   const [lastFeedTime, setLastFeedTimeState] = useState<Date | null>(null);
@@ -118,7 +118,6 @@ export default function MainScreen({ navigation }: MainScreenProps) {
   // 자동급여 로직 결과
   const autoFeeding = autoFeedingController(fishType, sensorData);
 
-  // 현재 선택된 물고기 정보 로드
   const loadCurrentFish = async () => {
     const fish = await getCurrentFish();
     setCurrentFish(fish);
@@ -255,7 +254,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
     const checkStatusChange = async () => {
       if (isLoading) return;
 
-      const currentStatus = sensorData.status;
+      const currentStatus = autoFeeding.mode; // autoFeeding.mode를 기준으로 상태 판단
       const prevStatus = prevStatusRef.current;
 
       if (currentStatus !== prevStatus && prevStatus !== undefined) {
@@ -264,19 +263,20 @@ export default function MainScreen({ navigation }: MainScreenProps) {
         let logMessage = "";
 
         switch (currentStatus) {
-          case "angry":
+          case "HOLD":
             title = `🚨 ${fishName}(이)가 화가 났습니다!`;
-            body = "수질이 나빠졌습니다. 확인이 필요합니다.";
+            body = "수질이 위험합니다. 급여가 중단될 수 있습니다.";
             logMessage = `${fishName}(이)가 화가 났습니다 😡`;
             break;
-          case "worry":
+          case "REDUCED":
             title = `⚠️ ${fishName}(이)가 걱정하고 있습니다`;
-            body = "수질이 조금 불안정해요. 주의가 필요합니다.";
+            body = "수질이 주의 수준입니다. 급여량이 줄어들 수 있습니다.";
             logMessage = `${fishName}(이)가 걱정하고 있습니다 😟`;
             break;
-          case "happy":
+          case "NORMAL":
+          default: // NORMAL 모드
             title = `✨ ${fishName}(이)가 행복합니다!`;
-            body = "수질이 좋아졌습니다!";
+            body = "수질이 최적 상태입니다!";
             logMessage = `${fishName}(이)가 행복합니다 😊`;
             break;
         }
@@ -291,36 +291,46 @@ export default function MainScreen({ navigation }: MainScreenProps) {
         await addLog({
           date: new Date().toLocaleString("ko-KR"),
           type: "status",
-          status: currentStatus,
+          status: currentStatus === "HOLD" ? "angry" : currentStatus === "REDUCED" ? "worry" : "happy",
           message: logMessage,
+          sensorData: {
+            temp: sensorData.temp,
+            ph: sensorData.ph,
+            tds: sensorData.tds,
+          },
         });
 
+        prevStatusRef.current = currentStatus;
+      } else if (prevStatus === undefined) {
+        // 첫 로드 시 현재 상태를 저장
         prevStatusRef.current = currentStatus;
       }
     };
 
     checkStatusChange();
-  }, [sensorData.status, isLoading, fishName]);
+  }, [autoFeeding.mode, isLoading, fishName]);
 
   // 물고기 상태 상세 설명 표시
   const explainFishStatus = () => {
-    const { status, temp, ph, tds } = sensorData;
+    const { temp, ph, tds } = sensorData;
+    const currentMode = autoFeeding.mode;
     let title = "";
     let message = "";
 
-    switch (status) {
-      case "angry":
+    switch (currentMode) {
+      case "HOLD":
         title = `😡 ${fishName}(이)가 화가 났습니다!`;
         message = `수질이 위험 수준입니다.\n(현재: T:${temp.toFixed(
           1
         )}°C, pH:${ph.toFixed(1)}, TDS:${tds}ppm)\n\n즉각적인 확인과 조치가 필요합니다!`;
         break;
-      case "worry":
+      case "REDUCED":
         title = `😟 ${fishName}(이)가 걱정하고 있습니다`;
         message = `수질이 주의 수준입니다.\n(현재: T:${temp.toFixed(
           1
         )}°C, pH:${ph.toFixed(1)}, TDS:${tds}ppm)\n\n환경을 점검해주세요.`;
         break;
+      case "NORMAL":
       default:
         title = `😊 ${fishName}(이)가 행복합니다!`;
         message = `최적의 수질 환경입니다.\n(현재: T:${temp.toFixed(
@@ -345,17 +355,19 @@ export default function MainScreen({ navigation }: MainScreenProps) {
       statusText = `${fishName}(이)가 스트레스를 받고 있습니다.`;
       bgColor = "#FFF8E5"; // worry color
     } else {
-      switch (sensorData.status) {
-        case "angry":
+      // autoFeeding.mode를 기준으로 상태 결정
+      switch (autoFeeding.mode) {
+        case "HOLD":
           imageSource = fishAngry;
           statusText = `${fishName}(이)가 화가 난 것 같습니다...`;
           bgColor = "#FFE5E5";
           break;
-        case "worry":
+        case "REDUCED":
           imageSource = fishWorry;
           statusText = `${fishName}(이)가 걱정하고 있습니다.`;
           bgColor = "#FFF8E5";
           break;
+        case "NORMAL":
         default:
           imageSource = fishHappy;
           statusText = `${fishName}(이)가 기분이 좋아요!`;

@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
-import { SensorData, FishType } from "../types";
-import { getFishLogic } from "./fishLogic";
+import { FishType, ExtendedSensorData } from "../types";
 
 // 라즈베리파이 API 주소
 const API_BASE_URL = "http://172.20.10.2:8000";
@@ -12,11 +11,10 @@ const API_BASE_URL = "http://172.20.10.2:8000";
 const CURRENT_FISH_TYPE: FishType = "betta";
 
 // 기본 센서 데이터
-const DEFAULT_SENSOR_DATA: SensorData = {
+const DEFAULT_SENSOR_DATA: ExtendedSensorData = {
   tds: 50,
   temp: 25,
   ph: 7.0,
-  status: "happy",
   fishType: CURRENT_FISH_TYPE,
 };
 
@@ -28,18 +26,15 @@ const ONE_M = 60 * 1000;
  * @returns [sensorData, isLoading, error, refetch]
  */
 export function useSensorData(): [
-  SensorData,
+  ExtendedSensorData,
   boolean,
   string | null,
   () => void
 ] {
   const [sensorData, setSensorData] =
-    useState<SensorData>(DEFAULT_SENSOR_DATA);
+    useState<ExtendedSensorData>(DEFAULT_SENSOR_DATA);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-
-  // 현재 어종에 맞는 로직 가져오기
-  const fishLogic = getFishLogic(CURRENT_FISH_TYPE);
 
   const fetchSensorData = useCallback(async () => {
     setIsLoading(true);
@@ -52,14 +47,12 @@ export function useSensorData(): [
       });
 
       const data = response.data;
-      const status = fishLogic.calculateStatus(data.temp, data.ph, data.tds);
 
       // 센서 데이터 상태 변환
       setSensorData({
         tds: data.tds || 0,
         temp: data.temp || 0,
         ph: data.ph || 7.0,
-        status: status,
         fishType: CURRENT_FISH_TYPE,
       });
 
@@ -76,20 +69,17 @@ export function useSensorData(): [
       const simPh = 5.5 + Math.random() * 3; // 5.5 ~ 8.5
       const simTds = 30 + Math.random() * 450; // 30 ~ 480
 
-      const simStatus = fishLogic.calculateStatus(simTemp, simPh, simTds);
-
       setSensorData({
         tds: Math.floor(simTds),
         temp: parseFloat(simTemp.toFixed(1)),
         ph: parseFloat(simPh.toFixed(1)),
-        status: simStatus,
         fishType: CURRENT_FISH_TYPE,
       });
 
       setError("라즈베리파이 연결 실패 (시뮬레이션 모드)");
       setIsLoading(false);
     }
-  }, [fishLogic]);
+  }, []);
 
   useEffect(() => {
     // 초기 데이터 로드
