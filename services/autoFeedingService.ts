@@ -30,8 +30,6 @@ export interface FeedingDecision {
   details: string; // 상세 설명
 }
 
-// === 1. 논문 기반 수질 허용/최적 범위 ===
-
 // === 2. 기본 급여율 (%BW/day) ===
 interface FeedRange {
   min: number;
