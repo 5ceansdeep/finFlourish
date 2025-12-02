@@ -35,6 +35,11 @@ export function useSensorData(): [
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const toNumberOrUndefined = (value: unknown): number | undefined => {
+    const parsed = typeof value === "string" ? Number(value) : value;
+    return typeof parsed === "number" && !Number.isNaN(parsed) ? parsed : undefined;
+  };
+
   const fetchSensorData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -49,9 +54,9 @@ export function useSensorData(): [
 
       // 센서 데이터 상태 변환
       setSensorData({
-        tds: data.tds || 0,
-        temp: data.temp || 0,
-        ph: data.ph || 7.0,
+        tds: toNumberOrUndefined(data.tds) ?? 0,
+        temp: toNumberOrUndefined(data.temp) ?? 0,
+        ph: toNumberOrUndefined(data.ph) ?? 7.0,
         fishType: CURRENT_FISH_TYPE,
       });
 
@@ -67,7 +72,6 @@ export function useSensorData(): [
       const simTemp = 18 + Math.random() * 15; // 18 ~ 33
       const simPh = 5.5 + Math.random() * 3; // 5.5 ~ 8.5
       const simTds = 30 + Math.random() * 450; // 30 ~ 480
-
       setSensorData({
         tds: Math.floor(simTds),
         temp: parseFloat(simTemp.toFixed(1)),
@@ -78,7 +82,7 @@ export function useSensorData(): [
       setError("라즈베리파이 연결 실패 (시뮬레이션 모드)");
       setIsLoading(false);
     }
-  }, []);
+  }, [toNumberOrUndefined]);
 
   useEffect(() => {
     // 초기 데이터 로드

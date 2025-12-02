@@ -37,9 +37,6 @@ export interface SensorData {
   temp: number; // 섭씨 온도
   ph: number;
   fishType: FishType; // 현재 물고기 종류
-  do?: number; // 용존산소 (mg/L) - 선택
-  tan?: number; // 총 암모니아질소 (mg/L as N) - 선택
-  nh3?: number; // 유리 암모니아 (mg/L as NH3) - 선택
 }
 
 /**

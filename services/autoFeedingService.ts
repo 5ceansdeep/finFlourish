@@ -1,5 +1,5 @@
 // services/autoFeedingService.ts
-// 논문 기반 자동급여 로직 - 생물량, DO, 암모니아 고려
+// 논문 기반 자동급여 로직 - 생물량, 온도, pH 중심
 
 import { FishType, LifeStage, SensorData } from "../types";
 
@@ -32,17 +32,16 @@ export interface FeedingDecision {
 // === 1. 최적 환경창 정의 ===
 interface OptimalEnv {
   temp: { min: number; max: number };
-  do: number; // 최소 DO (mg/L)
   ph: { min: number; max: number };
 }
 
 const OPTIMAL_ENV: Record<string, OptimalEnv> = {
-  betta_juvenile: { temp: { min: 26, max: 30 }, do: 5, ph: { min: 6.5, max: 7.5 } },
-  betta_adult: { temp: { min: 24, max: 30 }, do: 5, ph: { min: 6.0, max: 7.5 } },
-  goldfish_juvenile: { temp: { min: 20, max: 26 }, do: 6, ph: { min: 6.5, max: 8.0 } },
-  goldfish_adult: { temp: { min: 18, max: 26 }, do: 5, ph: { min: 6.5, max: 8.0 } },
-  guppy_juvenile: { temp: { min: 24, max: 28 }, do: 5, ph: { min: 6.5, max: 7.5 } },
-  guppy_adult: { temp: { min: 22, max: 28 }, do: 5, ph: { min: 6.5, max: 7.5 } },
+  betta_juvenile: { temp: { min: 26, max: 30 }, ph: { min: 6.5, max: 7.5 } },
+  betta_adult: { temp: { min: 24, max: 30 }, ph: { min: 6.0, max: 7.5 } },
+  goldfish_juvenile: { temp: { min: 20, max: 26 }, ph: { min: 6.5, max: 8.0 } },
+  goldfish_adult: { temp: { min: 18, max: 26 }, ph: { min: 6.5, max: 8.0 } },
+  guppy_juvenile: { temp: { min: 24, max: 28 }, ph: { min: 6.5, max: 7.5 } },
+  guppy_adult: { temp: { min: 22, max: 28 }, ph: { min: 6.5, max: 7.5 } },
 };
 
 // === 2. 기본 급여율 (%BW/day) ===
@@ -70,45 +69,15 @@ const FEEDING_FREQUENCY: Record<string, number> = {
   guppy_adult: 2,
 };
 
-// === 4. 암모니아 임계값 ===
-const AMMONIA_THRESHOLDS = {
-  TAN_TARGET: 0.5,
-  TAN_WARNING: 1.0,
-  NH3_TARGET: 0.02,
-  NH3_WARNING: 0.05,
-};
-
-/**
- * 총 암모니아 질소(TAN), 온도, pH를 기반으로 유리 암모니아(NH3) 농도를 계산합니다.
- * @param tan 총 암모니아 질소 (mg/L as N)
- * @param temp 온도 (°C)
- * @param ph pH 값
- * @returns 유리 암모니아 농도 (mg/L as NH3)
- */
-export function calculateFreeAmmonia(tan: number, temp: number, ph: number): number {
-  // pKa = 0.09018 + 2729.92 / (T + 273.15), T는 섭씨 온도
-  const pKa = 0.09018 + 2729.92 / (temp + 273.15);
-  // NH3 분율 = 1 / (1 + 10^(pKa - pH))
-  const fraction = 1 / (1 + Math.pow(10, pKa - ph));
-  // NH3 농도 = TAN * NH3 분율
-  return tan * fraction;
-}
-
 // === 5. 급여 모드 판정 로직 ===
 export function determineFeedingMode(
   input: FeedingInput
 ): FeedingMode {
   const { species, lifeStage, sensorData, stressEvent } = input;
-  const { temp, ph, do: doValue, tan } = sensorData;
+  const { temp, ph } = sensorData;
 
   const speciesKey = `${species}_${lifeStage}`;
   const optimal = OPTIMAL_ENV[speciesKey];
-
-  // DO가 없으면 기본값 사용 (안전하게 NORMAL 가정)
-  const currentDO = doValue ?? 6;
-  const currentTAN = tan ?? 0;
-  // NH3가 없으면 TAN, 온도, pH로 계산
-  const currentNH3 = sensorData.nh3 ?? (tan !== undefined ? calculateFreeAmmonia(tan, temp, ph) : 0);
 
   // 1) HOLD - 즉시 금식 필요
   // 스트레스 이벤트
@@ -116,31 +85,15 @@ export function determineFeedingMode(
     return "HOLD";
   }
 
-  // 암모니아 위험
-  if (currentNH3 > AMMONIA_THRESHOLDS.NH3_WARNING ||
-      currentTAN > AMMONIA_THRESHOLDS.TAN_WARNING) {
+  // 온도/피에이치가 안전 범위를 크게 벗어날 때 금식
+  if (temp < optimal.temp.min - 2 || temp > optimal.temp.max + 2) {
+    return "HOLD";
+  }
+  if (ph < optimal.ph.min - 0.3 || ph > optimal.ph.max + 0.3) {
     return "HOLD";
   }
 
-  // DO 위험 (베타 성어는 라비린스로 DO 3까지 버팀)
-  if (species === "betta" && lifeStage === "adult") {
-    if (currentDO < 3) return "HOLD";
-  } else {
-    if (currentDO < 4) return "HOLD";
-  }
-
   // 2) REDUCED - 감량 모드
-  // DO 경계
-  if (currentDO < optimal.do) {
-    return "REDUCED";
-  }
-
-  // 암모니아 경계
-  if (currentNH3 >= AMMONIA_THRESHOLDS.NH3_TARGET ||
-      currentTAN >= AMMONIA_THRESHOLDS.TAN_TARGET) {
-    return "REDUCED";
-  }
-
   // 온도 경계 (최적범위 벗어남)
   if (temp < optimal.temp.min || temp > optimal.temp.max) {
     return "REDUCED";
@@ -148,6 +101,11 @@ export function determineFeedingMode(
 
   // pH 경계
   if (sensorData.ph < optimal.ph.min || sensorData.ph > optimal.ph.max) {
+    return "REDUCED";
+  }
+
+  // pH가 하한선 근처면 급여량을 줄여 일일 pH 하락폭을 억제 (Daud 2020)
+  if (sensorData.ph < optimal.ph.min + 0.2) {
     return "REDUCED";
   }
 
@@ -280,7 +238,7 @@ export function computeDailyFeed(input: FeedingInput): FeedingDecision {
   const feedPerTime_g = timesPerDay > 0 ? dailyFeed_g / timesPerDay : 0;
 
   // 8. 사용자 안내 메시지 생성
-  const recommendation = generateRecommendation(mode, species, sensorData);
+  const recommendation = generateRecommendation(mode, species, lifeStage, sensorData);
   const details = generateDetails(input, mode, finalPercent, density);
 
   return {
@@ -298,6 +256,7 @@ export function computeDailyFeed(input: FeedingInput): FeedingDecision {
 function generateRecommendation(
   mode: FeedingMode,
   species: FishType,
+  lifeStage: LifeStage,
   sensorData: SensorData
 ): string {
   if (mode === "NORMAL") {
@@ -306,15 +265,13 @@ function generateRecommendation(
 
   if (mode === "REDUCED") {
     const reasons = [];
+    const optimal = OPTIMAL_ENV[`${species}_${lifeStage}`];
 
-    if (sensorData.do !== undefined && sensorData.do < 5) {
-      reasons.push("DO 낮음");
-    }
-    if (sensorData.tan !== undefined && sensorData.tan >= 0.5) {
-      reasons.push("암모니아 주의");
-    }
     if (sensorData.temp < 20 || sensorData.temp > 28) {
       reasons.push("온도 경계");
+    }
+    if (sensorData.ph < optimal.ph.min || sensorData.ph > optimal.ph.max) {
+      reasons.push("pH 경계");
     }
 
     const reasonText = reasons.length > 0 ? ` (${reasons.join(", ")})` : "";
@@ -351,13 +308,6 @@ function generateDetails(
     `급여율: ${finalPercent.toFixed(2)}% BW/day`,
     `모드: ${mode}`,
   ];
-
-  if (sensorData.do !== undefined) {
-    lines.push(`DO: ${sensorData.do.toFixed(1)} mg/L`);
-  }
-  if (sensorData.tan !== undefined) {
-    lines.push(`TAN: ${sensorData.tan.toFixed(2)} mg/L`);
-  }
 
   return lines.join("\n");
 }
