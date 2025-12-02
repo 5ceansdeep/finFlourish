@@ -38,76 +38,32 @@ interface EnvBand {
   caution?: SpeciesEnvPreset["caution"];
 }
 
+const buildEnvBand = (preset: SpeciesEnvPreset, lifeStage: LifeStage): EnvBand => ({
+  temp: {
+    preferred: preset.juvenilePreferred?.temp && lifeStage === "juvenile" ? preset.juvenilePreferred.temp : preset.preferred.temp,
+    survival: preset.survival.temp,
+  },
+  ph: {
+    preferred: preset.juvenilePreferred?.ph && lifeStage === "juvenile" ? preset.juvenilePreferred.ph : preset.preferred.ph,
+    survival: preset.survival.ph,
+  },
+  tds: preset.preferred.tdsMax && preset.survival.tdsMax
+    ? {
+        preferredMax:
+          preset.juvenilePreferred?.tdsMax && lifeStage === "juvenile" ? preset.juvenilePreferred.tdsMax : preset.preferred.tdsMax,
+        survivalMax: preset.survival.tdsMax,
+      }
+    : undefined,
+  caution: preset.caution,
+});
+
 const SPECIES_ENV: Record<string, EnvBand> = {
-  betta_juvenile: {
-    temp: {
-      preferred: SPECIES_ENV_PRESETS.betta.juvenilePreferred?.temp ?? SPECIES_ENV_PRESETS.betta.preferred.temp,
-      survival: SPECIES_ENV_PRESETS.betta.survival.temp,
-    },
-    ph: {
-      preferred: SPECIES_ENV_PRESETS.betta.juvenilePreferred?.ph ?? SPECIES_ENV_PRESETS.betta.preferred.ph,
-      survival: SPECIES_ENV_PRESETS.betta.survival.ph,
-    },
-    tds: {
-      preferredMax:
-        SPECIES_ENV_PRESETS.betta.juvenilePreferred?.tdsMax ?? SPECIES_ENV_PRESETS.betta.preferred.tdsMax!,
-      survivalMax: SPECIES_ENV_PRESETS.betta.survival.tdsMax!,
-    },
-    caution: SPECIES_ENV_PRESETS.betta.caution,
-  },
-  betta_adult: {
-    temp: { preferred: SPECIES_ENV_PRESETS.betta.preferred.temp, survival: SPECIES_ENV_PRESETS.betta.survival.temp },
-    ph: { preferred: SPECIES_ENV_PRESETS.betta.preferred.ph, survival: SPECIES_ENV_PRESETS.betta.survival.ph },
-    tds: { preferredMax: SPECIES_ENV_PRESETS.betta.preferred.tdsMax!, survivalMax: SPECIES_ENV_PRESETS.betta.survival.tdsMax! },
-    caution: SPECIES_ENV_PRESETS.betta.caution,
-  },
-  goldfish_juvenile: {
-    temp: {
-      preferred: SPECIES_ENV_PRESETS.goldfish.juvenilePreferred?.temp ?? SPECIES_ENV_PRESETS.goldfish.preferred.temp,
-      survival: SPECIES_ENV_PRESETS.goldfish.survival.temp,
-    },
-    ph: {
-      preferred: SPECIES_ENV_PRESETS.goldfish.juvenilePreferred?.ph ?? SPECIES_ENV_PRESETS.goldfish.preferred.ph,
-      survival: SPECIES_ENV_PRESETS.goldfish.survival.ph,
-    },
-    tds: {
-      preferredMax:
-        SPECIES_ENV_PRESETS.goldfish.juvenilePreferred?.tdsMax ?? SPECIES_ENV_PRESETS.goldfish.preferred.tdsMax!,
-      survivalMax: SPECIES_ENV_PRESETS.goldfish.survival.tdsMax!,
-    },
-    caution: SPECIES_ENV_PRESETS.goldfish.caution,
-  },
-  goldfish_adult: {
-    temp: { preferred: SPECIES_ENV_PRESETS.goldfish.preferred.temp, survival: SPECIES_ENV_PRESETS.goldfish.survival.temp },
-    ph: { preferred: SPECIES_ENV_PRESETS.goldfish.preferred.ph, survival: SPECIES_ENV_PRESETS.goldfish.survival.ph },
-    tds: {
-      preferredMax: SPECIES_ENV_PRESETS.goldfish.preferred.tdsMax!,
-      survivalMax: SPECIES_ENV_PRESETS.goldfish.survival.tdsMax!,
-    },
-    caution: SPECIES_ENV_PRESETS.goldfish.caution,
-  },
-  guppy_juvenile: {
-    temp: {
-      preferred: SPECIES_ENV_PRESETS.guppy.juvenilePreferred?.temp ?? SPECIES_ENV_PRESETS.guppy.preferred.temp,
-      survival: SPECIES_ENV_PRESETS.guppy.survival.temp,
-    },
-    ph: {
-      preferred: SPECIES_ENV_PRESETS.guppy.juvenilePreferred?.ph ?? SPECIES_ENV_PRESETS.guppy.preferred.ph,
-      survival: SPECIES_ENV_PRESETS.guppy.survival.ph,
-    },
-    tds: {
-      preferredMax:
-        SPECIES_ENV_PRESETS.guppy.juvenilePreferred?.tdsMax ?? SPECIES_ENV_PRESETS.guppy.preferred.tdsMax!,
-      survivalMax: SPECIES_ENV_PRESETS.guppy.survival.tdsMax!,
-    },
-    caution: SPECIES_ENV_PRESETS.guppy.caution,
-  },
-  guppy_adult: {
-    temp: { preferred: SPECIES_ENV_PRESETS.guppy.preferred.temp, survival: SPECIES_ENV_PRESETS.guppy.survival.temp },
-    ph: { preferred: SPECIES_ENV_PRESETS.guppy.preferred.ph, survival: SPECIES_ENV_PRESETS.guppy.survival.ph },
-    tds: { preferredMax: SPECIES_ENV_PRESETS.guppy.preferred.tdsMax!, survivalMax: SPECIES_ENV_PRESETS.guppy.survival.tdsMax! },
-    caution: SPECIES_ENV_PRESETS.guppy.caution,
-  },
+  betta_juvenile: buildEnvBand(SPECIES_ENV_PRESETS.betta, "juvenile"),
+  betta_adult: buildEnvBand(SPECIES_ENV_PRESETS.betta, "adult"),
+  goldfish_juvenile: buildEnvBand(SPECIES_ENV_PRESETS.goldfish, "juvenile"),
+  goldfish_adult: buildEnvBand(SPECIES_ENV_PRESETS.goldfish, "adult"),
+  guppy_juvenile: buildEnvBand(SPECIES_ENV_PRESETS.guppy, "juvenile"),
+  guppy_adult: buildEnvBand(SPECIES_ENV_PRESETS.guppy, "adult"),
 };
 
 // === 2. 기본 급여율 (%BW/day) ===
