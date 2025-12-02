@@ -316,26 +316,80 @@ export default function MainScreen({ navigation }: MainScreenProps) {
     const currentMode = autoFeeding.mode;
     let title = "";
     let message = "";
+    let reasons: string[] = [];
 
     switch (currentMode) {
       case "HOLD":
         title = `😡 ${fishName}(이)가 화가 났습니다!`;
-        message = `수질이 위험 수준입니다.\n(현재: T:${temp.toFixed(
-          1
-        )}°C, pH:${ph.toFixed(1)}, TDS:${tds}ppm)\n\n즉각적인 확인과 조치가 필요합니다!`;
+
+        // 구체적인 이유 수집
+        if (fishType === "betta" && temp < 20) {
+          reasons.push(`• 온도가 너무 낮습니다 (${temp.toFixed(1)}°C < 20°C)`);
+        }
+        if (fishType === "betta" && (temp < 15 || temp > 33)) {
+          reasons.push(`• 온도가 생존 한계를 벗어났습니다 (${temp.toFixed(1)}°C, 허용: 15-33°C)`);
+        } else if (fishType === "goldfish" && (temp < 0 || temp > 41)) {
+          reasons.push(`• 온도가 생존 한계를 벗어났습니다 (${temp.toFixed(1)}°C, 허용: 0-41°C)`);
+        } else if (fishType === "guppy" && (temp < 15 || temp > 41)) {
+          reasons.push(`• 온도가 생존 한계를 벗어났습니다 (${temp.toFixed(1)}°C, 허용: 15-41°C)`);
+        }
+
+        if (fishType === "betta" && (ph < 5.0 || ph > 9.0)) {
+          reasons.push(`• pH가 생존 한계를 벗어났습니다 (${ph.toFixed(1)}, 허용: 5.0-9.0)`);
+        } else if (fishType === "goldfish" && (ph < 4.5 || ph > 10.5)) {
+          reasons.push(`• pH가 생존 한계를 벗어났습니다 (${ph.toFixed(1)}, 허용: 4.5-10.5)`);
+        } else if (fishType === "guppy" && (ph < 5.0 || ph > 9.0)) {
+          reasons.push(`• pH가 생존 한계를 벗어났습니다 (${ph.toFixed(1)}, 허용: 5.0-9.0)`);
+        }
+
+        if (fishType === "betta" && tds > 6000) {
+          reasons.push(`• TDS가 너무 높습니다 (${tds}ppm > 6000ppm)`);
+        } else if (fishType === "goldfish" && tds > 20000) {
+          reasons.push(`• TDS가 너무 높습니다 (${tds}ppm > 20000ppm)`);
+        } else if (fishType === "guppy" && tds > 45000) {
+          reasons.push(`• TDS가 너무 높습니다 (${tds}ppm > 45000ppm)`);
+        }
+
+        message = `수질이 위험 수준입니다!\n\n현재 수질:\n• 온도: ${temp.toFixed(1)}°C\n• pH: ${ph.toFixed(1)}\n• TDS: ${tds}ppm\n\n문제점:\n${reasons.length > 0 ? reasons.join('\n') : '생존 한계를 벗어났습니다'}\n\n즉각적인 확인과 조치가 필요합니다!`;
         break;
       case "REDUCED":
         title = `😟 ${fishName}(이)가 걱정하고 있습니다`;
-        message = `수질이 주의 수준입니다.\n(현재: T:${temp.toFixed(
-          1
-        )}°C, pH:${ph.toFixed(1)}, TDS:${tds}ppm)\n\n환경을 점검해주세요.`;
+
+        // 구체적인 이유 수집
+        if (fishType === "betta" && (temp < 25 || temp > 30)) {
+          reasons.push(`• 온도가 최적 범위를 벗어났습니다 (권장: 25-30°C)`);
+        } else if (fishType === "goldfish" && (temp < 10 || temp > 30)) {
+          reasons.push(`• 온도가 최적 범위를 벗어났습니다 (권장: 10-30°C)`);
+        } else if (fishType === "guppy" && (temp < 18 || temp > 28)) {
+          reasons.push(`• 온도가 최적 범위를 벗어났습니다 (권장: 18-28°C)`);
+        }
+
+        if (fishType === "betta" && (ph < 5.5 || ph > 7.0)) {
+          reasons.push(`• pH가 최적 범위를 벗어났습니다 (권장: 5.5-7.0)`);
+        } else if (fishType === "goldfish" && (ph < 5.5 || ph > 7.0)) {
+          reasons.push(`• pH가 최적 범위를 벗어났습니다 (권장: 5.5-7.0)`);
+        } else if (fishType === "guppy" && (ph < 6.5 || ph > 7.5)) {
+          reasons.push(`• pH가 최적 범위를 벗어났습니다 (권장: 6.5-7.5)`);
+        }
+
+        if (fishType === "guppy" && ph > 8.5) {
+          reasons.push(`• pH가 너무 높습니다 (${ph.toFixed(1)} > 8.5)`);
+        }
+
+        if (fishType === "goldfish" && tds > 15000) {
+          reasons.push(`• TDS가 높습니다 (${tds}ppm, 주의: >15000ppm)`);
+        } else if (fishType === "betta" && tds > 1000) {
+          reasons.push(`• TDS가 높습니다 (${tds}ppm, 권장: <1000ppm)`);
+        } else if (fishType === "guppy" && tds > 10000) {
+          reasons.push(`• TDS가 높습니다 (${tds}ppm, 권장: <10000ppm)`);
+        }
+
+        message = `수질이 주의 수준입니다.\n\n현재 수질:\n• 온도: ${temp.toFixed(1)}°C\n• pH: ${ph.toFixed(1)}\n• TDS: ${tds}ppm\n\n주의사항:\n${reasons.length > 0 ? reasons.join('\n') : '환경을 점검해주세요'}\n\n급여량이 50% 감량될 수 있습니다.`;
         break;
       case "NORMAL":
       default:
         title = `😊 ${fishName}(이)가 행복합니다!`;
-        message = `최적의 수질 환경입니다.\n(현재: T:${temp.toFixed(
-          1
-        )}°C, pH:${ph.toFixed(1)}, TDS:${tds}ppm)\n\n완벽해요!`;
+        message = `최적의 수질 환경입니다.\n\n현재 수질:\n• 온도: ${temp.toFixed(1)}°C\n• pH: ${ph.toFixed(1)}\n• TDS: ${tds}ppm\n\n완벽해요! 계속 유지해주세요.`;
         break;
     }
     Alert.alert(title, message, [{ text: "확인", style: "default" }]);

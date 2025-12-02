@@ -35,10 +35,10 @@ export function useSensorData(): [
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const toNumberOrUndefined = (value: unknown): number | undefined => {
+  const toNumberOrUndefined = useCallback((value: unknown): number | undefined => {
     const parsed = typeof value === "string" ? Number(value) : value;
     return typeof parsed === "number" && !Number.isNaN(parsed) ? parsed : undefined;
-  };
+  }, []);
 
   const fetchSensorData = useCallback(async () => {
     setIsLoading(true);
@@ -66,7 +66,6 @@ export function useSensorData(): [
 
       // 네트워크 오류 시 시뮬레이션 데이터 사용 (개발용)
       console.log("시뮬레이션 모드로 전환");
-      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // 시뮬레이션용 랜덤 데이터 생성
       const simTemp = 18 + Math.random() * 15; // 18 ~ 33
