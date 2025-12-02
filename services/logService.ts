@@ -45,7 +45,7 @@ export async function addStatusLog(
   };
 
   await addLog({
-    date: new Date().toLocaleString("ko-KR"),
+    date: new Date().toISOString(),
     type: "status",
     status,
     message: messages[status],
@@ -55,7 +55,7 @@ export async function addStatusLog(
 // 먹이 급여 로그 추가
 export async function addFeedLog(manual: boolean = true): Promise<void> {
   await addLog({
-    date: new Date().toLocaleString("ko-KR"),
+    date: new Date().toISOString(),
     type: "feed",
     message: manual ? "먹이 급여 완료!" : "자동 먹이 급여 완료!",
   });
@@ -72,7 +72,7 @@ export async function addAutoFeedLog(
     : `🤖 자동급여 중단 - ${reason}`;
 
   await addLog({
-    date: new Date().toLocaleString("ko-KR"),
+    date: new Date().toISOString(),
     type: "auto_feed",
     message,
     autoFeedData: {

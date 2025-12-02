@@ -132,7 +132,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
           console.log(`${fish.name}의 스트레스 모드가 만료되었습니다. 로그를 기록합니다.`);
           await addLog({
             // 만료된 시점을 기준으로 로그 시간 기록
-            date: new Date(fish.stressUntil).toLocaleString("ko-KR"),
+            date: new Date(fish.stressUntil).toISOString(),
             type: "stress",
             status: "happy", // 스트레스가 끝났으므로 'happy'로 기록
             message: `${fish.name}의 스트레스 관리가 종료되었습니다.`,
@@ -192,7 +192,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
       if (success) {
         // 로그 추가
         await addLog({
-          date: new Date().toLocaleString("ko-KR"),
+          date: new Date().toISOString(),
           type: "auto_feed",
           message: shouldExecute
             ? `자동급여 완료`
@@ -289,7 +289,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
 
         // 상태 변화 로그 기록
         await addLog({
-          date: new Date().toLocaleString("ko-KR"),
+          date: new Date().toISOString(),
           type: "status",
           status: currentStatus === "HOLD" ? "angry" : currentStatus === "REDUCED" ? "worry" : "happy",
           message: logMessage,
@@ -407,7 +407,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
 
         // 스트레스 모드 시작 로그 추가
         await addLog({
-          date: new Date().toLocaleString("ko-KR"),
+          date: new Date().toISOString(),
           type: "stress",
           status: "worry", // 스트레스 시작이므로 'worry'로 기록
           message: `${currentFish.name}의 스트레스 관리를 시작합니다. (${reason})`,
@@ -607,7 +607,7 @@ export default function MainScreen({ navigation }: MainScreenProps) {
                 if (success) {
                   // 수동 먹이급여 로그 기록
                   await addLog({
-                    date: new Date().toLocaleString("ko-KR"),
+                    date: new Date().toISOString(),
                     type: "feed",
                     message: `${fishName}에게 먹이를 주었습니다 🍽️`,
                   });

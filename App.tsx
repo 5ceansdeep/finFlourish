@@ -1,5 +1,9 @@
 // App.tsx
 
+// Buffer polyfill for react-native-svg
+import { Buffer } from "buffer";
+global.Buffer = Buffer;
+
 import React, { useEffect } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
