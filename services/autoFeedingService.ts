@@ -2,6 +2,7 @@
 // 논문 기반 자동급여 로직 - 생물량, 온도, pH 중심
 
 import { FishType, LifeStage, SensorData } from "../types";
+import { SPECIES_ENV_PRESETS, SpeciesEnvPreset } from "./fishEnvPresets";
 
 // 급여 모드 타입
 export type FeedingMode = "NORMAL" | "REDUCED" | "HOLD";
@@ -34,41 +35,78 @@ interface EnvBand {
   temp: { preferred: { min: number; max: number }; survival: { min: number; max: number } };
   ph: { preferred: { min: number; max: number }; survival: { min: number; max: number } };
   tds?: { preferredMax: number; survivalMax: number }; // ppm 단위
+  caution?: SpeciesEnvPreset["caution"];
 }
 
 const SPECIES_ENV: Record<string, EnvBand> = {
-  // 베타 (Betta splendens): 25~30°C 최적, <20°C 급격히 악화, 5~9 pH 생존 (5~7 선호), TDS 0~1000ppm 선호, 최대 ~6000ppm
   betta_juvenile: {
-    temp: { preferred: { min: 26, max: 30 }, survival: { min: 15, max: 33 } },
-    ph: { preferred: { min: 5.5, max: 7.0 }, survival: { min: 5.0, max: 9.0 } },
-    tds: { preferredMax: 1000, survivalMax: 6000 },
+    temp: {
+      preferred: SPECIES_ENV_PRESETS.betta.juvenilePreferred?.temp ?? SPECIES_ENV_PRESETS.betta.preferred.temp,
+      survival: SPECIES_ENV_PRESETS.betta.survival.temp,
+    },
+    ph: {
+      preferred: SPECIES_ENV_PRESETS.betta.juvenilePreferred?.ph ?? SPECIES_ENV_PRESETS.betta.preferred.ph,
+      survival: SPECIES_ENV_PRESETS.betta.survival.ph,
+    },
+    tds: {
+      preferredMax:
+        SPECIES_ENV_PRESETS.betta.juvenilePreferred?.tdsMax ?? SPECIES_ENV_PRESETS.betta.preferred.tdsMax!,
+      survivalMax: SPECIES_ENV_PRESETS.betta.survival.tdsMax!,
+    },
+    caution: SPECIES_ENV_PRESETS.betta.caution,
   },
   betta_adult: {
-    temp: { preferred: { min: 25, max: 30 }, survival: { min: 15, max: 33 } },
-    ph: { preferred: { min: 5.5, max: 7.0 }, survival: { min: 5.0, max: 9.0 } },
-    tds: { preferredMax: 1000, survivalMax: 6000 },
+    temp: { preferred: SPECIES_ENV_PRESETS.betta.preferred.temp, survival: SPECIES_ENV_PRESETS.betta.survival.temp },
+    ph: { preferred: SPECIES_ENV_PRESETS.betta.preferred.ph, survival: SPECIES_ENV_PRESETS.betta.survival.ph },
+    tds: { preferredMax: SPECIES_ENV_PRESETS.betta.preferred.tdsMax!, survivalMax: SPECIES_ENV_PRESETS.betta.survival.tdsMax! },
+    caution: SPECIES_ENV_PRESETS.betta.caution,
   },
-  // 금붕어 (Carassius auratus): 10~30°C 활발, 0~41°C 생존, pH 4.5~10.5 허용(5.5~7.0 적합), TDS 최대 20,000ppm, 0~8ppt(8,000ppm) 권장
   goldfish_juvenile: {
-    temp: { preferred: { min: 18, max: 28 }, survival: { min: 0, max: 41 } },
-    ph: { preferred: { min: 5.5, max: 7.0 }, survival: { min: 4.5, max: 10.5 } },
-    tds: { preferredMax: 8000, survivalMax: 20000 },
+    temp: {
+      preferred: SPECIES_ENV_PRESETS.goldfish.juvenilePreferred?.temp ?? SPECIES_ENV_PRESETS.goldfish.preferred.temp,
+      survival: SPECIES_ENV_PRESETS.goldfish.survival.temp,
+    },
+    ph: {
+      preferred: SPECIES_ENV_PRESETS.goldfish.juvenilePreferred?.ph ?? SPECIES_ENV_PRESETS.goldfish.preferred.ph,
+      survival: SPECIES_ENV_PRESETS.goldfish.survival.ph,
+    },
+    tds: {
+      preferredMax:
+        SPECIES_ENV_PRESETS.goldfish.juvenilePreferred?.tdsMax ?? SPECIES_ENV_PRESETS.goldfish.preferred.tdsMax!,
+      survivalMax: SPECIES_ENV_PRESETS.goldfish.survival.tdsMax!,
+    },
+    caution: SPECIES_ENV_PRESETS.goldfish.caution,
   },
   goldfish_adult: {
-    temp: { preferred: { min: 18, max: 30 }, survival: { min: 0, max: 41 } },
-    ph: { preferred: { min: 5.5, max: 7.0 }, survival: { min: 4.5, max: 10.5 } },
-    tds: { preferredMax: 8000, survivalMax: 20000 },
+    temp: { preferred: SPECIES_ENV_PRESETS.goldfish.preferred.temp, survival: SPECIES_ENV_PRESETS.goldfish.survival.temp },
+    ph: { preferred: SPECIES_ENV_PRESETS.goldfish.preferred.ph, survival: SPECIES_ENV_PRESETS.goldfish.survival.ph },
+    tds: {
+      preferredMax: SPECIES_ENV_PRESETS.goldfish.preferred.tdsMax!,
+      survivalMax: SPECIES_ENV_PRESETS.goldfish.survival.tdsMax!,
+    },
+    caution: SPECIES_ENV_PRESETS.goldfish.caution,
   },
-  // 구피 (Poecilia reticulata): 18~28°C 최적, 15°C 이하/41°C 이상 위험, pH 5~9 허용, TDS 최대 45ppt(45,000ppm), 0~10ppt(10,000ppm) 안정
   guppy_juvenile: {
-    temp: { preferred: { min: 20, max: 28 }, survival: { min: 15, max: 41 } },
-    ph: { preferred: { min: 6.5, max: 7.5 }, survival: { min: 5.0, max: 9.0 } },
-    tds: { preferredMax: 10000, survivalMax: 45000 },
+    temp: {
+      preferred: SPECIES_ENV_PRESETS.guppy.juvenilePreferred?.temp ?? SPECIES_ENV_PRESETS.guppy.preferred.temp,
+      survival: SPECIES_ENV_PRESETS.guppy.survival.temp,
+    },
+    ph: {
+      preferred: SPECIES_ENV_PRESETS.guppy.juvenilePreferred?.ph ?? SPECIES_ENV_PRESETS.guppy.preferred.ph,
+      survival: SPECIES_ENV_PRESETS.guppy.survival.ph,
+    },
+    tds: {
+      preferredMax:
+        SPECIES_ENV_PRESETS.guppy.juvenilePreferred?.tdsMax ?? SPECIES_ENV_PRESETS.guppy.preferred.tdsMax!,
+      survivalMax: SPECIES_ENV_PRESETS.guppy.survival.tdsMax!,
+    },
+    caution: SPECIES_ENV_PRESETS.guppy.caution,
   },
   guppy_adult: {
-    temp: { preferred: { min: 18, max: 28 }, survival: { min: 15, max: 41 } },
-    ph: { preferred: { min: 6.5, max: 7.5 }, survival: { min: 5.0, max: 9.0 } },
-    tds: { preferredMax: 10000, survivalMax: 45000 },
+    temp: { preferred: SPECIES_ENV_PRESETS.guppy.preferred.temp, survival: SPECIES_ENV_PRESETS.guppy.survival.temp },
+    ph: { preferred: SPECIES_ENV_PRESETS.guppy.preferred.ph, survival: SPECIES_ENV_PRESETS.guppy.survival.ph },
+    tds: { preferredMax: SPECIES_ENV_PRESETS.guppy.preferred.tdsMax!, survivalMax: SPECIES_ENV_PRESETS.guppy.survival.tdsMax! },
+    caution: SPECIES_ENV_PRESETS.guppy.caution,
   },
 };
 
@@ -114,7 +152,7 @@ export function determineFeedingMode(
   }
 
   // 온도/피에이치/염분이 생존 한계를 벗어날 때 금식
-  if (species === "betta" && temp < 20) {
+  if (species === "betta" && env.caution?.holdTempBelow !== undefined && temp < env.caution.holdTempBelow) {
     return "HOLD"; // 20°C 미만은 논문에서 급격한 생존률 저하
   }
 
@@ -140,11 +178,11 @@ export function determineFeedingMode(
   }
 
   // 구피 pH 8.5 초과, 금붕어 고염(>15,000ppm) 같은 특이 스트레스 구간
-  if (species === "guppy" && sensorData.ph > 8.5) {
+  if (species === "guppy" && env.caution?.worryPhAbove !== undefined && sensorData.ph > env.caution.worryPhAbove) {
     return "REDUCED";
   }
 
-  if (species === "goldfish" && env.tds && sensorData.tds > 15000) {
+  if (species === "goldfish" && env.caution?.worryTdsAbove !== undefined && sensorData.tds > env.caution.worryTdsAbove) {
     return "REDUCED";
   }
 

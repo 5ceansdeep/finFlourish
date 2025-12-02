@@ -2,6 +2,7 @@
 // 센서 변환/보정 및 수질 상태 평가 유틸리티 (논문 근거)
 
 import { FishType } from "../types";
+import { SPECIES_ENV_PRESETS } from "./fishEnvPresets";
 
 export interface CalibrationParams {
   slope: number;
@@ -10,28 +11,15 @@ export interface CalibrationParams {
 
 export type WaterStatus = "happy" | "worry" | "angry";
 
-interface PreferredBand {
-  temp: { preferred: { min: number; max: number }; limit: { min: number; max: number } };
-  ph: { preferred: { min: number; max: number }; limit: { min: number; max: number } };
-  tds?: { preferredMax: number; limitMax: number };
-}
-
-const SPECIES_PRESETS: Record<FishType, PreferredBand> = {
-  betta: {
-    temp: { preferred: { min: 25, max: 30 }, limit: { min: 15, max: 33 } },
-    ph: { preferred: { min: 5.5, max: 7.0 }, limit: { min: 5.0, max: 9.0 } },
-    tds: { preferredMax: 1000, limitMax: 6000 },
-  },
-  goldfish: {
-    temp: { preferred: { min: 10, max: 30 }, limit: { min: 0, max: 41 } },
-    ph: { preferred: { min: 5.5, max: 7.0 }, limit: { min: 4.5, max: 10.5 } },
-    tds: { preferredMax: 8000, limitMax: 20000 },
-  },
-  guppy: {
-    temp: { preferred: { min: 18, max: 28 }, limit: { min: 15, max: 41 } },
-    ph: { preferred: { min: 6.5, max: 7.5 }, limit: { min: 5.0, max: 9.0 } },
-    tds: { preferredMax: 10000, limitMax: 45000 },
-  },
+const getPreferredBand = (fishType: FishType) => {
+  const preset = SPECIES_ENV_PRESETS[fishType];
+  return {
+    temp: { preferred: preset.preferred.temp, limit: preset.survival.temp },
+    ph: { preferred: preset.preferred.ph, limit: preset.survival.ph },
+    tds: preset.preferred.tdsMax && preset.survival.tdsMax
+      ? { preferredMax: preset.preferred.tdsMax, limitMax: preset.survival.tdsMax }
+      : undefined,
+  };
 };
 
 /**
@@ -74,16 +62,17 @@ export function evaluateWaterStatus(
   readings: { temp: number; ph: number; tds: number; fishType: FishType }
 ): WaterStatus {
   const { temp, ph, tds, fishType } = readings;
-  const preset = SPECIES_PRESETS[fishType];
+  const preset = getPreferredBand(fishType);
 
   // 한계 밖이면 바로 angry
+  const caution = SPECIES_ENV_PRESETS[fishType].caution;
   const outsideLimit =
     temp < preset.temp.limit.min ||
     temp > preset.temp.limit.max ||
     ph < preset.ph.limit.min ||
     ph > preset.ph.limit.max ||
     (preset.tds ? tds > preset.tds.limitMax : false) ||
-    (fishType === "betta" && temp < 20);
+    (caution?.holdTempBelow !== undefined && temp < caution.holdTempBelow);
 
   if (outsideLimit) return "angry";
 
@@ -94,10 +83,10 @@ export function evaluateWaterStatus(
     ph > preset.ph.preferred.max ||
     (preset.tds ? tds > preset.tds.preferredMax : false);
 
-  // 어종 특이 주의 조건 반영
+  // 어종 특이 주의 조건 반영 (공유 프리셋에서 가져옴)
   const specialWorry =
-    (fishType === "guppy" && ph > 8.5) ||
-    (fishType === "goldfish" && preset.tds ? tds > 15000 : false);
+    (caution?.worryPhAbove !== undefined && ph > caution.worryPhAbove) ||
+    (caution?.worryTdsAbove !== undefined && tds > caution.worryTdsAbove);
 
   return outsidePreferred || specialWorry ? "worry" : "happy";
 }
