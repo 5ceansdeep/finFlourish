@@ -2,7 +2,7 @@
 // 논문 기반 자동급여 로직 - 생물량, 온도, pH 중심
 
 import { FishType, LifeStage, SensorData } from "../types";
-import { SPECIES_ENV_PRESETS, SpeciesEnvPreset } from "./fishEnvPresets";
+import { ENV_BANDS } from "./fishEnvPresets";
 
 // 급여 모드 타입
 export type FeedingMode = "NORMAL" | "REDUCED" | "HOLD";
@@ -31,40 +31,6 @@ export interface FeedingDecision {
 }
 
 // === 1. 논문 기반 수질 허용/최적 범위 ===
-interface EnvBand {
-  temp: { preferred: { min: number; max: number }; survival: { min: number; max: number } };
-  ph: { preferred: { min: number; max: number }; survival: { min: number; max: number } };
-  tds?: { preferredMax: number; survivalMax: number }; // ppm 단위
-  caution?: SpeciesEnvPreset["caution"];
-}
-
-const buildEnvBand = (preset: SpeciesEnvPreset, lifeStage: LifeStage): EnvBand => ({
-  temp: {
-    preferred: preset.juvenilePreferred?.temp && lifeStage === "juvenile" ? preset.juvenilePreferred.temp : preset.preferred.temp,
-    survival: preset.survival.temp,
-  },
-  ph: {
-    preferred: preset.juvenilePreferred?.ph && lifeStage === "juvenile" ? preset.juvenilePreferred.ph : preset.preferred.ph,
-    survival: preset.survival.ph,
-  },
-  tds: preset.preferred.tdsMax && preset.survival.tdsMax
-    ? {
-        preferredMax:
-          preset.juvenilePreferred?.tdsMax && lifeStage === "juvenile" ? preset.juvenilePreferred.tdsMax : preset.preferred.tdsMax,
-        survivalMax: preset.survival.tdsMax,
-      }
-    : undefined,
-  caution: preset.caution,
-});
-
-const SPECIES_ENV: Record<string, EnvBand> = {
-  betta_juvenile: buildEnvBand(SPECIES_ENV_PRESETS.betta, "juvenile"),
-  betta_adult: buildEnvBand(SPECIES_ENV_PRESETS.betta, "adult"),
-  goldfish_juvenile: buildEnvBand(SPECIES_ENV_PRESETS.goldfish, "juvenile"),
-  goldfish_adult: buildEnvBand(SPECIES_ENV_PRESETS.goldfish, "adult"),
-  guppy_juvenile: buildEnvBand(SPECIES_ENV_PRESETS.guppy, "juvenile"),
-  guppy_adult: buildEnvBand(SPECIES_ENV_PRESETS.guppy, "adult"),
-};
 
 // === 2. 기본 급여율 (%BW/day) ===
 interface FeedRange {
@@ -98,8 +64,8 @@ export function determineFeedingMode(
   const { species, lifeStage, sensorData, stressEvent } = input;
   const { temp, ph, tds } = sensorData;
 
-  const speciesKey = `${species}_${lifeStage}`;
-  const env = SPECIES_ENV[speciesKey];
+  const speciesKey = `${species}_${lifeStage}` as const;
+  const env = ENV_BANDS[speciesKey];
 
   // 1) HOLD - 즉시 금식 필요
   // 스트레스 이벤트
@@ -307,7 +273,7 @@ function generateRecommendation(
 
   if (mode === "REDUCED") {
     const reasons = [];
-    const env = SPECIES_ENV[`${species}_${lifeStage}`];
+    const env = ENV_BANDS[`${species}_${lifeStage}` as const];
 
     if (sensorData.temp < env.temp.preferred.min || sensorData.temp > env.temp.preferred.max) {
       reasons.push("온도 경계");

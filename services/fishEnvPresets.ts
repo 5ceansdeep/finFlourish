@@ -1,7 +1,7 @@
 // services/fishEnvPresets.ts
 // 어종별 온도/pH/TDS 범위 프리셋 (연구 수치 기반)
 
-import { FishType } from "../types";
+import { FishType, LifeStage } from "../types";
 
 type Range = { min: number; max: number };
 
@@ -10,6 +10,13 @@ export interface SpeciesEnvPreset {
   preferred: { temp: Range; ph: Range; tdsMax?: number };
   juvenilePreferred?: { temp?: Range; ph?: Range; tdsMax?: number };
   caution?: { holdTempBelow?: number; worryPhAbove?: number; worryTdsAbove?: number };
+}
+
+export interface EnvBand {
+  temp: { preferred: Range; survival: Range };
+  ph: { preferred: Range; survival: Range };
+  tds?: { preferredMax: number; survivalMax: number };
+  caution?: SpeciesEnvPreset["caution"];
 }
 
 export const SPECIES_ENV_PRESETS: Record<FishType, SpeciesEnvPreset> = {
@@ -31,4 +38,39 @@ export const SPECIES_ENV_PRESETS: Record<FishType, SpeciesEnvPreset> = {
     juvenilePreferred: { temp: { min: 20, max: 28 } },
     caution: { worryPhAbove: 8.5 },
   },
+};
+
+export const buildEnvBand = (preset: SpeciesEnvPreset, lifeStage: LifeStage = "adult"): EnvBand => ({
+  temp: {
+    preferred: preset.juvenilePreferred?.temp && lifeStage === "juvenile" ? preset.juvenilePreferred.temp : preset.preferred.temp,
+    survival: preset.survival.temp,
+  },
+  ph: {
+    preferred: preset.juvenilePreferred?.ph && lifeStage === "juvenile" ? preset.juvenilePreferred.ph : preset.preferred.ph,
+    survival: preset.survival.ph,
+  },
+  tds:
+    preset.preferred.tdsMax && preset.survival.tdsMax
+      ? {
+          preferredMax:
+            preset.juvenilePreferred?.tdsMax && lifeStage === "juvenile" ? preset.juvenilePreferred.tdsMax : preset.preferred.tdsMax,
+          survivalMax: preset.survival.tdsMax,
+        }
+      : undefined,
+  caution: preset.caution,
+});
+
+export const ENV_BANDS: Record<`${FishType}_${LifeStage}`, EnvBand> = {
+  betta_juvenile: buildEnvBand(SPECIES_ENV_PRESETS.betta, "juvenile"),
+  betta_adult: buildEnvBand(SPECIES_ENV_PRESETS.betta, "adult"),
+  goldfish_juvenile: buildEnvBand(SPECIES_ENV_PRESETS.goldfish, "juvenile"),
+  goldfish_adult: buildEnvBand(SPECIES_ENV_PRESETS.goldfish, "adult"),
+  guppy_juvenile: buildEnvBand(SPECIES_ENV_PRESETS.guppy, "juvenile"),
+  guppy_adult: buildEnvBand(SPECIES_ENV_PRESETS.guppy, "adult"),
+};
+
+export const ADULT_ENV_BANDS: Record<FishType, EnvBand> = {
+  betta: ENV_BANDS.betta_adult,
+  goldfish: ENV_BANDS.goldfish_adult,
+  guppy: ENV_BANDS.guppy_adult,
 };
